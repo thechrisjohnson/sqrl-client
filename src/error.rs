@@ -26,6 +26,12 @@ impl From<std::array::TryFromSliceError> for SqrlError {
     }
 }
 
+impl From<url::ParseError> for SqrlError {
+    fn from(error: url::ParseError) -> Self {
+        SqrlError::new(error.to_string())
+    }
+}
+
 impl fmt::Display for SqrlError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.error_message)
@@ -34,6 +40,12 @@ impl fmt::Display for SqrlError {
 
 impl fmt::Debug for SqrlError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{{ file: {}, line: {} }}", file!(), line!())
+        write!(
+            f,
+            "{} {{ file: {}, line: {} }}",
+            self.error_message,
+            file!(),
+            line!()
+        )
     }
 }
