@@ -102,7 +102,6 @@ impl UserConfiguration {
         let key = en_scrypt(
             password.as_bytes(),
             &self.scrypt_config,
-            self.pw_verify_sec,
         )?;
         let mut aes = AesGcm::new(
             KeySize::KeySize256,

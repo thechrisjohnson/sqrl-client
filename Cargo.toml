@@ -5,6 +5,8 @@ version = "0.1.0"
 [dependencies]
 base64 = "0.13.0"
 byteorder = "1.4.3"
+num-bigint = "0.4"
+num-traits = "0.2.15"
 rand = "0.8"
 rust-crypto = "0.2.36"
 url = "2.2"

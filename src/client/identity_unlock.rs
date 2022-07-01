@@ -1,7 +1,12 @@
+use byteorder::{WriteBytesExt, LittleEndian};
+use crypto::aead::AeadEncryptor;
+use crypto::aes::KeySize;
+use crypto::aes_gcm::AesGcm;
 use super::readable_vector::ReadableVector;
 use super::scrypt_config::ScryptConfig;
 use super::writable_datablock::WritableDataBlock;
 use super::DataType;
+use crate::common::{mut_en_scrypt, generate_rescue_code};
 use crate::error::SqrlError;
 use std::collections::VecDeque;
 use std::convert::TryInto;
@@ -15,12 +20,51 @@ pub(crate) struct IdentityUnlock {
 }
 
 impl IdentityUnlock {
-    pub fn new() -> Self {
+    pub fn new(identity_unlock_key: [u8; 32]) -> (Self, String) {
+        let mut identity_unlock = 
         IdentityUnlock {
             scrypt_config: ScryptConfig::new(),
-            identity_unlock_key: [0; 32],
+            identity_unlock_key: identity_unlock_key,
             verification_data: [0; 16],
-        }
+        };
+
+        let rescue_code = identity_unlock.update_unlock_key(identity_unlock_key).unwrap();
+        (identity_unlock, rescue_code)
+    }
+
+    fn aad(&self) -> Result<Vec<u8>, SqrlError> {
+        let mut result = Vec::<u8>::new();
+        result.write_u16::<LittleEndian>(self.len())?;
+        self.get_type().to_binary(&mut result)?;
+        self.scrypt_config.to_binary(&mut result)?;
+        Ok(result)
+    }
+
+    fn update_unlock_key(&mut self, identity_unlock_key: [u8; 32]) -> Result<String, SqrlError> {
+        let mut encrypted_data: [u8; 32] = [0; 32];
+        let rescue_code = generate_rescue_code();
+
+        let key = mut_en_scrypt(
+            &rescue_code.as_bytes(),
+            &mut self.scrypt_config,
+            7,
+        );
+        let mut aes = AesGcm::new(
+            KeySize::KeySize256,
+            &key,
+            &[0;256],
+            self.aad()?.as_slice(),
+        );
+
+        aes.encrypt(
+            &identity_unlock_key,
+            &mut encrypted_data,
+            &mut self.verification_data,
+        );
+
+        self.identity_unlock_key = encrypted_data;
+
+        Ok(rescue_code)
     }
 }
 

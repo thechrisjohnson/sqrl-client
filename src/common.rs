@@ -3,9 +3,13 @@ use crypto::{
     scrypt::{scrypt, ScryptParams},
     sha2::Sha256,
 };
-use std::{collections::VecDeque, time::Instant};
-
+use num_bigint::{BigUint, ToBigUint};
+use num_traits::ToPrimitive;
+use rand::{prelude::StdRng, SeedableRng, RngCore};
+use std::{collections::VecDeque, time::Instant, ops::{Rem, DivAssign}};
 use crate::{client::{scrypt_config::ScryptConfig, SCRYPT_DEFAULT_P, SCRYPT_DEFAULT_R}, error::SqrlError};
+
+const RESCUE_CODE_ALPHABET: [char; 10] = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
 
 pub(crate) fn en_hash(input: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();
@@ -78,7 +82,6 @@ pub(crate) fn mut_en_scrypt(
 pub(crate) fn en_scrypt(
     password: &[u8],
     scrypt_config: &ScryptConfig,
-    pw_verify_sec: u8,
 ) -> Result<[u8; 32], SqrlError> {
     let mut output: [u8; 32] = [0; 32];
     let mut input: [u8; 32] = [0; 32];
@@ -125,4 +128,22 @@ pub(crate) fn convert_vec(mut input: Vec<u8>) -> VecDeque<u8> {
     }
 
     new_vec
+}
+
+pub(crate) fn generate_rescue_code() -> String {
+    let mut random = StdRng::from_entropy();
+    let mut rescue_code_data: [u8; 32] = [0; 32];
+    random.fill_bytes(&mut rescue_code_data);
+
+    let mut num = BigUint::from_bytes_le(&rescue_code_data);
+    let mut rescue_code = String::new();
+    let zero = 0.to_biguint().unwrap();
+    while num > zero {
+        let remainder = &num % 10u8;
+        num.div_assign(10u8);
+        let character = RESCUE_CODE_ALPHABET[remainder.to_usize().unwrap()]; 
+        rescue_code.push(character);
+    }
+
+    rescue_code
 }

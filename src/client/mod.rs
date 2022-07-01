@@ -79,13 +79,13 @@ impl SqrlClient {
         let mut random = StdRng::from_entropy();
         let mut identity_unlock_key: [u8; 32] = [0; 32];
         random.fill_bytes(&mut identity_unlock_key);
-
-        // TODO
-        // 2. Use ECDHA (Diffie-Helman with EC) to create a "Encrypted Identity Lock Key"
-        let identity_unlock = IdentityUnlock::new();
-
-        // 3. EnHash the IUK to become the Identity Master Key
         let identity_master_key = en_hash(&identity_unlock_key);
+
+        
+        let (identity_unlock, rescue_code) = IdentityUnlock::new(identity_unlock_key);
+
+        // 2. Use ECDHA (Diffie-Helman with EC) to create a "Encrypted Identity Lock Key"
+        // 3. EnHash the IUK to become the Identity Master Key
 
         // 4. EnScrypt the password and use it to encrypt the IUK
         let user_configuration = UserConfiguration::new(identity_master_key);
