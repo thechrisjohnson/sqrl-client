@@ -1,4 +1,3 @@
-mod identity_key;
 mod identity_unlock;
 mod previous_identity;
 mod readable_vector;
@@ -7,9 +6,9 @@ mod user_configuration;
 mod writable_datablock;
 
 use self::{
-    identity_key::IdentityKey, identity_unlock::IdentityUnlock,
-    previous_identity::PreviousIdentityData, readable_vector::ReadableVector,
-    user_configuration::UserConfiguration, writable_datablock::WritableDataBlock,
+    identity_unlock::IdentityUnlock, previous_identity::PreviousIdentityData,
+    readable_vector::ReadableVector, user_configuration::UserConfiguration,
+    writable_datablock::WritableDataBlock,
 };
 use crate::{
     common::{convert_vec, en_hash},
@@ -28,6 +27,7 @@ use std::{collections::VecDeque, fs::File, io::Write};
 use url::{Host, Url};
 
 // The configuration options for the SqrlClient
+// TODO: Is this something that should be handled by the client and not the lib
 pub const CHECK_FOR_UPDATES: u16 = 0x0001;
 pub const UPDATE_ANONYMOUSLY: u16 = 0x0002;
 pub const SQRL_ONLY_LOGIN: u16 = 0x0004;
@@ -74,7 +74,7 @@ pub struct SqrlClient {
 }
 
 impl SqrlClient {
-    pub fn new() -> (Self, String) {
+    pub fn new(password: &str) -> Result<Self, SqrlError> {
         // 1. Generate a random 256-bit value (Known as the Identity Unlock Key)
         let mut random = StdRng::from_entropy();
         let mut identity_unlock_key: [u8; 32] = [0; 32];
@@ -82,41 +82,32 @@ impl SqrlClient {
 
         // TODO
         // 2. Use ECDHA (Diffie-Helman with EC) to create a "Encrypted Identity Lock Key"
+        let identity_unlock = IdentityUnlock::new();
 
         // 3. EnHash the IUK to become the Identity Master Key
         let identity_master_key = en_hash(&identity_unlock_key);
 
         // 4. EnScrypt the password and use it to encrypt the IUK
-        let mut user_configuration = UserConfiguration::new();
-        user_configuration.identity_master_key = IdentityKey::Plaintext(identity_master_key);
+        let user_configuration = UserConfiguration::new(identity_master_key);
 
-        (
-            SqrlClient {
-                user_configuration: user_configuration,
-                identity_unlock: IdentityUnlock::new(),
-                previous_identities: None,
-            },
-            "TODO".to_owned(),
-        )
+        Ok(SqrlClient {
+            user_configuration: user_configuration,
+            identity_unlock: identity_unlock,
+            previous_identities: None,
+        })
     }
 
     // TODO
     pub fn unlock_with_rescue_code(&mut self, _rescue_code: &str) {}
 
     pub fn verify(&mut self, password: &str) -> Result<(), SqrlError> {
-        self.user_configuration
-            .unencrypt_identity_master_key(password)?;
-        Ok(())
-    }
-
-    pub fn save(&mut self, password: &str) -> Result<(), SqrlError> {
-        self.user_configuration
-            .encrypt_identity_master_key(password)?;
+        self.user_configuration.verify(password)?;
         Ok(())
     }
 
     pub fn sign_request(
         &self,
+        password: &str,
         url: &str,
         alternate_identity: Option<&str>,
         request: &str,
@@ -131,12 +122,13 @@ impl SqrlClient {
             Host::Ipv6(host) => host.to_string(),
         };
 
-        let keys = self.get_keys(&host, alternate_identity)?;
+        let keys = self.get_keys(password, &host, alternate_identity)?;
         Ok(keys.sign(request.as_bytes()))
     }
 
     pub fn get_keys(
         &self,
+        password: &str,
         hostname: &str,
         alternate_identity: Option<&str>,
     ) -> Result<KeyPair, SqrlError> {
@@ -145,15 +137,8 @@ impl SqrlClient {
             None => hostname.to_owned(),
         };
 
-        let key = match self.user_configuration.identity_master_key {
-            IdentityKey::Plaintext(key) => key,
-            IdentityKey::Encrypted(_) => {
-                return Err(SqrlError::new(
-                    "Identity encrypted and cannot be used".to_owned(),
-                ))
-            }
-        };
-
+        // TODO: Don't require mutability when decrypting things (need to change ScryptConfig)
+        let key = self.user_configuration.decrypt_user_identity_key(password)?;
         let mut hmac = Hmac::new(Sha256::new(), &key);
         hmac.input(data.as_bytes());
         let (public, private) = keypair(hmac.result().code());
@@ -166,10 +151,11 @@ impl SqrlClient {
 
     pub fn get_index_secret(
         &self,
+        password: &str,
         hostname: &str,
         secret_index: &str,
     ) -> Result<String, SqrlError> {
-        let keys = self.get_keys(hostname, None)?;
+        let keys = self.get_keys(password, hostname, None)?;
         let hash = en_hash(&keys.private_key);
         let mut hmac = Hmac::new(Sha256::new(), &hash);
         hmac.input(secret_index.as_bytes());
@@ -206,10 +192,13 @@ impl SqrlClient {
                 break;
             }
 
-            // TODO: Do we need to worry about the length?
-            binary.skip(2);
-            let block_type = DataType::from_binary(&mut binary)?;
+            // Make sure the length matches
+            let block_length = binary.next_u16()?;
+            if binary.len() < block_length.into() {
+                return Err(SqrlError::new("Invalid binary data".to_string()));
+            }
 
+            let block_type = DataType::from_binary(&mut binary)?;
             match block_type {
                 DataType::UserAccess => {
                     if user_configuration != None {
@@ -351,8 +340,7 @@ impl SqrlStorage for SqrlClient {
             line_num += 1;
         }
 
-        let (client, _) = SqrlClient::new();
-        Ok(client)
+        SqrlClient::new("password")
     }
 
     fn to_textual_identity_format(&self) -> Result<String, SqrlError> {
@@ -413,13 +401,13 @@ mod tests {
     fn it_can_write_and_read_empty() {
         let mut random = StdRng::from_entropy();
         let file = format!("test{}.bin", random.next_u64());
-        let (mut client, _) = SqrlClient::new();
+        let mut client = SqrlClient::new("password").unwrap();
 
-        client.previous_identities = Some(PreviousIdentityData {
-            edition: 1,
-            previous_identity_unlock_keys: vec![IdentityKey::Encrypted([17; 32])],
-            verification_data: [0; 16],
-        });
+        client.previous_identities = Some(PreviousIdentityData::new());
+        match &mut client.previous_identities {
+            Some(previous_identities) => previous_identities.add_previous_identity([17; 32]),
+            _ => ()
+        }
 
         client
             .to_file(&file)
@@ -434,7 +422,7 @@ mod tests {
     fn it_can_write_and_read_empty_previous_identity() {
         let mut random = StdRng::from_entropy();
         let file = format!("test{}.bin", random.next_u64());
-        let (client, _) = SqrlClient::new();
+        let client = SqrlClient::new("password").unwrap();
 
         client
             .to_file(&file)

@@ -1,8 +1,8 @@
 use super::{
-    identity_key::IdentityKey, readable_vector::ReadableVector, scrypt_config::ScryptConfig,
+    readable_vector::ReadableVector, scrypt_config::ScryptConfig,
     writable_datablock::WritableDataBlock, DataType,
 };
-use crate::{common::en_scrypt, error::SqrlError};
+use crate::{common::{mut_en_scrypt, en_scrypt}, error::SqrlError};
 use byteorder::{LittleEndian, WriteBytesExt};
 use crypto::{
     aead::{AeadDecryptor, AeadEncryptor},
@@ -20,13 +20,14 @@ pub(crate) struct UserConfiguration {
     hint_length: u8,
     pw_verify_sec: u8,
     idle_timeout_min: u16,
-    pub(crate) identity_master_key: IdentityKey,
-    identity_lock_key: IdentityKey,
+    identity_master_key: [u8; 32],
+    identity_lock_key: [u8; 32],
     verification_data: [u8; 16],
 }
 
 impl UserConfiguration {
-    pub fn new() -> Self {
+    // TODO: User config should never sit "unencrypted"
+    pub fn new(identity_master_key: [u8; 32]) -> Self {
         let mut random = StdRng::from_entropy();
         let mut aes_gcm_iv: [u8; 12] = [0; 12];
         random.fill_bytes(&mut aes_gcm_iv);
@@ -37,104 +38,113 @@ impl UserConfiguration {
             hint_length: 0,
             pw_verify_sec: 5,
             idle_timeout_min: 0,
-            identity_master_key: IdentityKey::Plaintext([0; 32]),
-            identity_lock_key: IdentityKey::Plaintext([0; 32]),
+            identity_master_key: identity_master_key,
+            identity_lock_key: [0; 32],
             verification_data: [0; 16],
         }
     }
 
-    pub fn aad(&self) -> [u8; 45] {
-        // TODO: Do this better
-        let mut result: [u8; 45] = [0; 45];
-        const SIZE: u16 = 125;
-        const BLOCK_TYPE: u16 = 1;
-        const UNENCRYPTED_SIZE: u16 = 45;
-        for i in 0..45 {
-            if i < 2 {
-                result[i] = SIZE.to_le_bytes()[i]
-            } else if i >= 2 && i < 4 {
-                result[i] = BLOCK_TYPE.to_le_bytes()[i - 2]
-            } else if i >= 4 && i < 6 {
-                result[i] = UNENCRYPTED_SIZE.to_le_bytes()[i - 4]
-            } else if i >= 6 && i < 18 {
-                result[i] = self.aes_gcm_iv[i - 6];
-            } else if i >= 18 && i < 34 {
-                result[i] = self.scrypt_config.random_salt[i - 18];
-            } else if i == 34 {
-                result[i] = self.scrypt_config.log_n_factor
-            } else if i >= 35 && i < 39 {
-                result[i] = self.scrypt_config.iteration_factor.unwrap().to_le_bytes()[i - 35];
-            } else if i >= 39 && i < 41 {
-                result[i] = self.option_flags.to_le_bytes()[i - 39];
-            } else if i == 41 {
-                result[i] = self.hint_length;
-            } else if i == 42 {
-                result[i] = self.pw_verify_sec;
-            } else if i >= 43 {
-                result[i] = self.idle_timeout_min.to_le_bytes()[i - 43];
-            }
-        }
-        result
+    fn aad(&self) -> Result<Vec<u8>, SqrlError> {
+        let mut result = Vec::<u8>::new();
+        result.write_u16::<LittleEndian>(self.len())?;
+        self.get_type().to_binary(&mut result)?;
+        result.write_u16::<LittleEndian>(45)?;
+        result.write(&self.aes_gcm_iv)?;
+        self.scrypt_config.to_binary(&mut result)?;
+        result.write_u16::<LittleEndian>(self.option_flags)?;
+        result.push(self.hint_length);
+        result.push(self.pw_verify_sec);
+        result.write_u16::<LittleEndian>(self.idle_timeout_min)?;
+        Ok(result)
     }
 
-    pub fn unencrypt_identity_master_key(&mut self, password: &str) -> Result<(), SqrlError> {
-        match self.identity_master_key {
-            IdentityKey::Encrypted(data) => {
-                let mut encrypted_data: [u8; 64] = [0; 64];
-                let key_two = match self.identity_lock_key {
-                    IdentityKey::Encrypted(x) => x,
-                    IdentityKey::Plaintext(x) => x,
-                };
-                for i in 0..64 {
-                    if i < 32 {
-                        encrypted_data[i] = data[i];
-                    } else {
-                        encrypted_data[i] = key_two[i - 32];
-                    }
-                }
-                let mut unencrypted_data: [u8; 64] = [0; 64];
-                let key = en_scrypt(
-                    password.as_bytes(),
-                    &mut self.scrypt_config,
-                    self.pw_verify_sec,
-                );
-                let mut aes = AesGcm::new(KeySize::KeySize256, &key, &self.aes_gcm_iv, &self.aad());
-                if aes.decrypt(
-                    &encrypted_data,
-                    &mut unencrypted_data,
-                    &self.verification_data,
-                ) {
-                    // self.identity_master_key = IdentityKey::Plaintext(unencrypted_data[..32]);
-                } else {
-                    return Err(SqrlError::new(
-                        "Decryption failed. Check your password!".to_owned(),
-                    ));
-                }
-            }
-            _ => (),
-        };
+    pub(crate) fn decrypt_user_identity_key(
+        &self,
+        password: &str,
+    ) -> Result<[u8; 32], SqrlError> {
+        let mut user_identity_key  = [0; 32];
+        let decrypted_data = self.decrypt(password)?;
+        for n in 0..32 {
+            user_identity_key[n] = decrypted_data[n];
+        }
 
+        Ok(user_identity_key)
+    }
+
+    pub(crate) fn decrypt_user_lock_key(
+        &self,
+        password: &str,
+    ) -> Result<[u8; 32], SqrlError> {
+        let mut user_unlock_key  = [0; 32];
+        let decrypted_data = self.decrypt(password)?;
+        for n in 0..32 {
+            user_unlock_key[n] = decrypted_data[32+n];
+        }
+
+        Ok(user_unlock_key)
+    }
+
+    pub(crate) fn verify(&self, password: &str) -> Result<(), SqrlError> {
+        self.decrypt(password)?;
         Ok(())
     }
 
-    pub fn encrypt_identity_master_key(&mut self, password: &str) -> Result<(), SqrlError> {
-        match self.identity_master_key {
-            IdentityKey::Plaintext(data) => {
-                let mut random = StdRng::from_entropy();
-                let mut encrypted_data: [u8; 32] = [0; 32];
-
-                let key = en_scrypt(
-                    password.as_bytes(),
-                    &mut self.scrypt_config,
-                    self.pw_verify_sec,
-                );
-                random.fill_bytes(&mut self.aes_gcm_iv);
-                let mut aes = AesGcm::new(KeySize::KeySize256, &key, &self.aes_gcm_iv, &self.aad());
-                aes.encrypt(&data, &mut encrypted_data, &mut self.verification_data);
-                self.identity_master_key = IdentityKey::Encrypted(encrypted_data);
+    fn decrypt(&self, password: &str) -> Result<[u8; 64], SqrlError> {
+        let mut encrypted_data: [u8; 64] = [0; 64];
+        for i in 0..64 {
+            if i < 32 {
+                encrypted_data[i] = self.identity_master_key[i];
+            } else {
+                encrypted_data[i] = self.identity_lock_key[i - 32];
             }
-            _ => (),
         }
+        let mut unencrypted_data: [u8; 64] = [0; 64];
+        let key = en_scrypt(
+            password.as_bytes(),
+            &self.scrypt_config,
+            self.pw_verify_sec,
+        )?;
+        let mut aes = AesGcm::new(
+            KeySize::KeySize256,
+            &key,
+            &self.aes_gcm_iv,
+            self.aad()?.as_slice(),
+        );
+        if aes.decrypt(
+            &encrypted_data,
+            &mut unencrypted_data,
+            &self.verification_data,
+        ) {
+            Ok(unencrypted_data)
+        } else {
+            return Err(SqrlError::new(
+                "Decryption failed. Check your password!".to_owned(),
+            ));
+        }
+    }
+
+    fn encrypt(&mut self, password: &str) -> Result<(), SqrlError> {
+        let mut random = StdRng::from_entropy();
+        let mut encrypted_data: [u8; 32] = [0; 32];
+
+        let key = mut_en_scrypt(
+            password.as_bytes(),
+            &mut self.scrypt_config,
+            self.pw_verify_sec,
+        );
+        random.fill_bytes(&mut self.aes_gcm_iv);
+        let mut aes = AesGcm::new(
+            KeySize::KeySize256,
+            &key,
+            &self.aes_gcm_iv,
+            self.aad()?.as_slice(),
+        );
+        aes.encrypt(
+            &self.identity_master_key,
+            &mut encrypted_data,
+            &mut self.verification_data,
+        );
+        self.identity_master_key = encrypted_data;
 
         Ok(())
     }
@@ -163,8 +173,8 @@ impl WritableDataBlock for UserConfiguration {
             .pop_front()
             .ok_or(SqrlError::new("Invalid binary data".to_owned()))?;
         let idle_timeout_min = binary.next_u16()?;
-        let identity_master_key = IdentityKey::from_binary(binary)?;
-        let identity_lock_key = IdentityKey::from_binary(binary)?;
+        let identity_master_key = binary.next_sub_array(32)?.as_slice().try_into()?;
+        let identity_lock_key = binary.next_sub_array(32)?.as_slice().try_into()?;
         let verification_data = binary.next_sub_array(16)?.as_slice().try_into()?;
 
         Ok(UserConfiguration {
@@ -188,8 +198,8 @@ impl WritableDataBlock for UserConfiguration {
         output.push(self.hint_length);
         output.push(self.pw_verify_sec);
         output.write_u16::<LittleEndian>(self.idle_timeout_min)?;
-        self.identity_master_key.to_binary(output)?;
-        self.identity_lock_key.to_binary(output)?;
+        output.write(&self.identity_master_key)?;
+        output.write(&self.identity_lock_key)?;
         output.write(&self.verification_data)?;
 
         Ok(())

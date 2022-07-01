@@ -1,16 +1,25 @@
-use super::{
-    identity_key::IdentityKey, readable_vector::ReadableVector,
-    writable_datablock::WritableDataBlock, DataType,
-};
+use super::{readable_vector::ReadableVector, writable_datablock::WritableDataBlock, DataType};
 use crate::error::SqrlError;
 use byteorder::{LittleEndian, WriteBytesExt};
+use std::io::Write;
 use std::{collections::VecDeque, convert::TryInto};
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct PreviousIdentityData {
-    pub(crate) edition: u16,
-    pub(crate) previous_identity_unlock_keys: Vec<IdentityKey>,
+    edition: u16,
+    pub(crate) previous_identity_unlock_keys: Vec<[u8; 32]>,
     pub(crate) verification_data: [u8; 16],
+}
+
+impl PreviousIdentityData {
+    pub(crate) fn  new() -> Self {
+        PreviousIdentityData { edition: 0, previous_identity_unlock_keys: Vec::new(), verification_data: [0; 16] }
+    }
+
+    pub(crate) fn add_previous_identity(&mut self, key: [u8; 32]) -> () {
+        self.edition += 1;
+        self.previous_identity_unlock_keys.push(key)
+    }
 }
 
 impl WritableDataBlock for PreviousIdentityData {
@@ -31,7 +40,7 @@ impl WritableDataBlock for PreviousIdentityData {
 
         let mut previous_identity_unlock_keys = Vec::new();
         for _ in 0..edition {
-            previous_identity_unlock_keys.push(IdentityKey::from_binary(binary)?);
+            previous_identity_unlock_keys.push(binary.next_sub_array(32)?.as_slice().try_into()?);
         }
 
         let verification_data = binary.next_sub_array(16)?.as_slice().try_into()?;
@@ -50,8 +59,9 @@ impl WritableDataBlock for PreviousIdentityData {
 
         output.write_u16::<LittleEndian>(self.edition)?;
         for key in &self.previous_identity_unlock_keys {
-            key.to_binary(output)?;
+            output.write(key);
         }
+        output.write(&self.verification_data)?;
 
         Ok(())
     }

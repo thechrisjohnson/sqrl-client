@@ -5,7 +5,7 @@ use crypto::{
 };
 use std::{collections::VecDeque, time::Instant};
 
-use crate::client::{scrypt_config::ScryptConfig, SCRYPT_DEFAULT_P, SCRYPT_DEFAULT_R};
+use crate::{client::{scrypt_config::ScryptConfig, SCRYPT_DEFAULT_P, SCRYPT_DEFAULT_R}, error::SqrlError};
 
 pub(crate) fn en_hash(input: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();
@@ -22,7 +22,7 @@ pub(crate) fn en_hash(input: &[u8]) -> [u8; 32] {
     output
 }
 
-pub(crate) fn en_scrypt(
+pub(crate) fn mut_en_scrypt(
     password: &[u8],
     scrypt_config: &mut ScryptConfig,
     pw_verify_sec: u8,
@@ -73,6 +73,40 @@ pub(crate) fn en_scrypt(
     }
 
     output
+}
+
+pub(crate) fn en_scrypt(
+    password: &[u8],
+    scrypt_config: &ScryptConfig,
+    pw_verify_sec: u8,
+) -> Result<[u8; 32], SqrlError> {
+    let mut output: [u8; 32] = [0; 32];
+    let mut input: [u8; 32] = [0; 32];
+    let mut temp: [u8; 32] = [0; 32];
+
+    let params = ScryptParams::new(
+        scrypt_config.log_n_factor,
+        SCRYPT_DEFAULT_R,
+        SCRYPT_DEFAULT_P,
+    );
+
+    match scrypt_config.iteration_factor {
+        Some(factor) => {
+            for i in 0..factor {
+                if i == 0 {
+                    scrypt(password, &scrypt_config.random_salt, &params, &mut temp);
+                } else {
+                    scrypt(password, &input, &params, &mut temp);
+                }
+
+                xor(&mut output, &temp);
+                input = temp;
+            }
+        }
+        None => return Err(SqrlError::new("ScryptConfig iteration factor not set".to_string()))
+    }
+
+    Ok(output)
 }
 
 pub(crate) fn xor(output: &mut [u8], other: &[u8]) {
