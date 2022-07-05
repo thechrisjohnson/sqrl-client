@@ -81,7 +81,6 @@ impl SqrlClient {
         random.fill_bytes(&mut identity_unlock_key);
         let identity_master_key = en_hash(&identity_unlock_key);
 
-        
         let (identity_unlock, rescue_code) = IdentityUnlock::new(identity_unlock_key);
 
         // 2. Use ECDHA (Diffie-Helman with EC) to create a "Encrypted Identity Lock Key"
@@ -138,7 +137,9 @@ impl SqrlClient {
         };
 
         // TODO: Don't require mutability when decrypting things (need to change ScryptConfig)
-        let key = self.user_configuration.decrypt_user_identity_key(password)?;
+        let key = self
+            .user_configuration
+            .decrypt_user_identity_key(password)?;
         let mut hmac = Hmac::new(Sha256::new(), &key);
         hmac.input(data.as_bytes());
         let (public, private) = keypair(hmac.result().code());
@@ -402,12 +403,6 @@ mod tests {
         let mut random = StdRng::from_entropy();
         let file = format!("test{}.bin", random.next_u64());
         let mut client = SqrlClient::new("password").unwrap();
-
-        client.previous_identities = Some(PreviousIdentityData::new());
-        match &mut client.previous_identities {
-            Some(previous_identities) => previous_identities.add_previous_identity([17; 32]),
-            _ => ()
-        }
 
         client
             .to_file(&file)

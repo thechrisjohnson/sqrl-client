@@ -1,3 +1,7 @@
+use crate::{
+    client::{scrypt_config::ScryptConfig, SCRYPT_DEFAULT_P, SCRYPT_DEFAULT_R},
+    error::SqrlError,
+};
 use crypto::{
     digest::Digest,
     scrypt::{scrypt, ScryptParams},
@@ -5,9 +9,13 @@ use crypto::{
 };
 use num_bigint::{BigUint, ToBigUint};
 use num_traits::ToPrimitive;
-use rand::{prelude::StdRng, SeedableRng, RngCore};
-use std::{collections::VecDeque, time::Instant, ops::{Rem, DivAssign}};
-use crate::{client::{scrypt_config::ScryptConfig, SCRYPT_DEFAULT_P, SCRYPT_DEFAULT_R}, error::SqrlError};
+use rand::{prelude::StdRng, RngCore, SeedableRng};
+use std::{
+    collections::VecDeque,
+    io::Read,
+    ops::{DivAssign, Rem},
+    time::Instant,
+};
 
 const RESCUE_CODE_ALPHABET: [char; 10] = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
 
@@ -106,7 +114,11 @@ pub(crate) fn en_scrypt(
                 input = temp;
             }
         }
-        None => return Err(SqrlError::new("ScryptConfig iteration factor not set".to_string()))
+        None => {
+            return Err(SqrlError::new(
+                "ScryptConfig iteration factor not set".to_string(),
+            ))
+        }
     }
 
     Ok(output)
@@ -141,9 +153,21 @@ pub(crate) fn generate_rescue_code() -> String {
     while num > zero {
         let remainder = &num % 10u8;
         num.div_assign(10u8);
-        let character = RESCUE_CODE_ALPHABET[remainder.to_usize().unwrap()]; 
+        let character = RESCUE_CODE_ALPHABET[remainder.to_usize().unwrap()];
         rescue_code.push(character);
     }
 
     rescue_code
+}
+
+pub(crate) fn decode_rescue_code(rescue_code: &str) -> [u8; 32] {
+    let mut num = 0u8.to_biguint().unwrap();
+    for c in rescue_code.chars() {
+        let index = RESCUE_CODE_ALPHABET.iter().position(|&x| x == c).unwrap();
+        num += index;
+        num *= 10u8;
+    }
+
+    // TODO: Should I change this to a Vec?
+    [0; 32]
 }
