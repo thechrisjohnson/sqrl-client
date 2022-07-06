@@ -18,6 +18,7 @@ use std::{
 };
 
 const RESCUE_CODE_ALPHABET: [char; 10] = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+pub(crate) const EMPTY_NONCE: [u8; 12] = [0; 12];
 
 pub(crate) fn en_hash(input: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();
@@ -149,25 +150,33 @@ pub(crate) fn generate_rescue_code() -> String {
 
     let mut num = BigUint::from_bytes_le(&rescue_code_data);
     let mut rescue_code = String::new();
-    let zero = 0.to_biguint().unwrap();
-    while num > zero {
+    let mut count = 0;
+    for _ in 0..24 {
         let remainder = &num % 10u8;
         num.div_assign(10u8);
         let character = RESCUE_CODE_ALPHABET[remainder.to_usize().unwrap()];
         rescue_code.push(character);
+
+        // Every four characters add a hyphen
+        count += 1;
+        if count == 4 {
+            count = 0;
+            rescue_code.push('-');
+        }
     }
 
     rescue_code
 }
 
-pub(crate) fn decode_rescue_code(rescue_code: &str) -> [u8; 32] {
-    let mut num = 0u8.to_biguint().unwrap();
+pub(crate) fn decode_rescue_code(rescue_code: &str) -> String {
+    let mut result = String::new();
     for c in rescue_code.chars() {
-        let index = RESCUE_CODE_ALPHABET.iter().position(|&x| x == c).unwrap();
-        num += index;
-        num *= 10u8;
+        if c == '-' {
+            continue;
+        }
+        result.push(c);
     }
 
-    // TODO: Should I change this to a Vec?
-    [0; 32]
+    println!("{}", &result);
+    result
 }

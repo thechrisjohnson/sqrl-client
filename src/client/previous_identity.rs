@@ -1,4 +1,5 @@
 use super::{readable_vector::ReadableVector, writable_datablock::WritableDataBlock, DataType};
+use crate::common::EMPTY_NONCE;
 use crate::error::SqrlError;
 use byteorder::{LittleEndian, WriteBytesExt};
 use crypto::aead::{AeadDecryptor, AeadEncryptor};
@@ -48,7 +49,7 @@ impl PreviousIdentityData {
         let mut aes = AesGcm::new(
             KeySize::KeySize256,
             &identity_master_key,
-            &[0; 32],
+            &EMPTY_NONCE,
             self.aad()?.as_slice(),
         );
 
@@ -87,7 +88,7 @@ impl PreviousIdentityData {
         let mut aes = AesGcm::new(
             KeySize::KeySize256,
             identity_master_key,
-            &[0; 32],
+            &EMPTY_NONCE,
             self.aad()?.as_slice(),
         );
 
@@ -161,7 +162,7 @@ impl WritableDataBlock for PreviousIdentityData {
 
         output.write_u16::<LittleEndian>(self.edition)?;
         for key in &self.previous_identity_unlock_keys {
-            output.write(key);
+            output.write(key)?;
         }
         output.write(&self.verification_data)?;
 

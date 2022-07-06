@@ -74,14 +74,14 @@ pub struct SqrlClient {
 }
 
 impl SqrlClient {
-    pub fn new(password: &str) -> Result<Self, SqrlError> {
+    pub fn new(password: &str) -> Result<(Self, String), SqrlError> {
         // 1. Generate a random 256-bit value (Known as the Identity Unlock Key)
         let mut random = StdRng::from_entropy();
         let mut identity_unlock_key: [u8; 32] = [0; 32];
         random.fill_bytes(&mut identity_unlock_key);
         let identity_master_key = en_hash(&identity_unlock_key);
 
-        let (identity_unlock, rescue_code) = IdentityUnlock::new(identity_unlock_key);
+        let (identity_unlock, rescue_code) = IdentityUnlock::new(identity_unlock_key)?;
 
         // 2. Use ECDHA (Diffie-Helman with EC) to create a "Encrypted Identity Lock Key"
         // 3. EnHash the IUK to become the Identity Master Key
@@ -89,11 +89,14 @@ impl SqrlClient {
         // 4. EnScrypt the password and use it to encrypt the IUK
         let user_configuration = UserConfiguration::new(identity_master_key);
 
-        Ok(SqrlClient {
-            user_configuration: user_configuration,
-            identity_unlock: identity_unlock,
-            previous_identities: None,
-        })
+        Ok((
+            SqrlClient {
+                user_configuration: user_configuration,
+                identity_unlock: identity_unlock,
+                previous_identities: None,
+            },
+            rescue_code,
+        ))
     }
 
     // TODO
@@ -125,31 +128,6 @@ impl SqrlClient {
         Ok(keys.sign(request.as_bytes()))
     }
 
-    pub fn get_keys(
-        &self,
-        password: &str,
-        hostname: &str,
-        alternate_identity: Option<&str>,
-    ) -> Result<KeyPair, SqrlError> {
-        let data = match alternate_identity {
-            Some(id) => format!("{}{}", hostname, id),
-            None => hostname.to_owned(),
-        };
-
-        // TODO: Don't require mutability when decrypting things (need to change ScryptConfig)
-        let key = self
-            .user_configuration
-            .decrypt_user_identity_key(password)?;
-        let mut hmac = Hmac::new(Sha256::new(), &key);
-        hmac.input(data.as_bytes());
-        let (public, private) = keypair(hmac.result().code());
-
-        Ok(KeyPair {
-            public_key: public,
-            private_key: private,
-        })
-    }
-
     pub fn get_index_secret(
         &self,
         password: &str,
@@ -165,6 +143,30 @@ impl SqrlClient {
             hmac.result().code(),
             base64::URL_SAFE,
         ))
+    }
+
+    fn get_keys(
+        &self,
+        password: &str,
+        hostname: &str,
+        alternate_identity: Option<&str>,
+    ) -> Result<KeyPair, SqrlError> {
+        let data = match alternate_identity {
+            Some(id) => format!("{}{}", hostname, id),
+            None => hostname.to_owned(),
+        };
+
+        let key = self
+            .user_configuration
+            .decrypt_user_identity_key(password)?;
+        let mut hmac = Hmac::new(Sha256::new(), &key);
+        hmac.input(data.as_bytes());
+        let (public, private) = keypair(hmac.result().code());
+
+        Ok(KeyPair {
+            public_key: public,
+            private_key: private,
+        })
     }
 
     fn from_binary(mut binary: VecDeque<u8>) -> Result<Self, SqrlError> {
@@ -194,8 +196,9 @@ impl SqrlClient {
             }
 
             // Make sure the length matches
+            // But add two after removing the first two bytes for size
             let block_length = binary.next_u16()?;
-            if binary.len() < block_length.into() {
+            if binary.len() + 2 < block_length.into() {
                 return Err(SqrlError::new("Invalid binary data".to_string()));
             }
 
@@ -341,7 +344,8 @@ impl SqrlStorage for SqrlClient {
             line_num += 1;
         }
 
-        SqrlClient::new("password")
+        let (client, _) = SqrlClient::new("password")?;
+        Ok(client)
     }
 
     fn to_textual_identity_format(&self) -> Result<String, SqrlError> {
@@ -394,15 +398,24 @@ mod tests {
     #[test]
     fn load_test_data() {
         let mut client =
-            SqrlClient::from_file("/Users/chris/src/Spec-Vectors-Identity.sqrl").unwrap();
+            SqrlClient::from_file("test_resources/Spec-Vectors-Identity.sqrl").unwrap();
         client.verify("Zingo-Bingo-Slingo-Dingo").unwrap();
+    }
+
+    #[test]
+    fn try_rescue_code() {
+        let client = SqrlClient::from_file("test_resources/Spec-Vectors-Identity.sqrl").unwrap();
+        client
+            .identity_unlock
+            .decrypt_identity_unlock_key("1198-8748-7132-2838-8318-7570")
+            .unwrap();
     }
 
     #[test]
     fn it_can_write_and_read_empty() {
         let mut random = StdRng::from_entropy();
         let file = format!("test{}.bin", random.next_u64());
-        let mut client = SqrlClient::new("password").unwrap();
+        let (client, _) = SqrlClient::new("password").unwrap();
 
         client
             .to_file(&file)
@@ -417,7 +430,7 @@ mod tests {
     fn it_can_write_and_read_empty_previous_identity() {
         let mut random = StdRng::from_entropy();
         let file = format!("test{}.bin", random.next_u64());
-        let client = SqrlClient::new("password").unwrap();
+        let (client, _) = SqrlClient::new("password").unwrap();
 
         client
             .to_file(&file)
