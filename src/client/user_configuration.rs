@@ -2,7 +2,10 @@ use super::{
     readable_vector::ReadableVector, scrypt_config::ScryptConfig,
     writable_datablock::WritableDataBlock, DataType,
 };
-use crate::{common::{mut_en_scrypt, en_scrypt}, error::SqrlError};
+use crate::{
+    common::{en_scrypt, mut_en_scrypt},
+    error::SqrlError,
+};
 use byteorder::{LittleEndian, WriteBytesExt};
 use crypto::{
     aead::{AeadDecryptor, AeadEncryptor},
@@ -26,13 +29,13 @@ pub(crate) struct UserConfiguration {
 }
 
 impl UserConfiguration {
-    // TODO: User config should never sit "unencrypted"
-    pub fn new(identity_master_key: [u8; 32]) -> Self {
-        let mut random = StdRng::from_entropy();
-        let mut aes_gcm_iv: [u8; 12] = [0; 12];
-        random.fill_bytes(&mut aes_gcm_iv);
-        UserConfiguration {
-            aes_gcm_iv: aes_gcm_iv,
+    pub fn new(
+        password: &str,
+        identity_master_key: [u8; 32],
+        identity_lock_key: [u8; 32],
+    ) -> Result<Self, SqrlError> {
+        let mut config = UserConfiguration {
+            aes_gcm_iv: [0; 12],
             scrypt_config: ScryptConfig::new(),
             option_flags: 0,
             hint_length: 0,
@@ -41,7 +44,10 @@ impl UserConfiguration {
             identity_master_key: identity_master_key,
             identity_lock_key: [0; 32],
             verification_data: [0; 16],
-        }
+        };
+        config.update_keys(password, identity_master_key, identity_lock_key)?;
+
+        Ok(config)
     }
 
     fn aad(&self) -> Result<Vec<u8>, SqrlError> {
@@ -58,11 +64,8 @@ impl UserConfiguration {
         Ok(result)
     }
 
-    pub(crate) fn decrypt_user_identity_key(
-        &self,
-        password: &str,
-    ) -> Result<[u8; 32], SqrlError> {
-        let mut user_identity_key  = [0; 32];
+    pub(crate) fn decrypt_user_identity_key(&self, password: &str) -> Result<[u8; 32], SqrlError> {
+        let mut user_identity_key = [0; 32];
         let decrypted_data = self.decrypt(password)?;
         for n in 0..32 {
             user_identity_key[n] = decrypted_data[n];
@@ -71,14 +74,11 @@ impl UserConfiguration {
         Ok(user_identity_key)
     }
 
-    pub(crate) fn decrypt_user_lock_key(
-        &self,
-        password: &str,
-    ) -> Result<[u8; 32], SqrlError> {
-        let mut user_unlock_key  = [0; 32];
+    pub(crate) fn decrypt_user_lock_key(&self, password: &str) -> Result<[u8; 32], SqrlError> {
+        let mut user_unlock_key = [0; 32];
         let decrypted_data = self.decrypt(password)?;
         for n in 0..32 {
-            user_unlock_key[n] = decrypted_data[32+n];
+            user_unlock_key[n] = decrypted_data[32 + n];
         }
 
         Ok(user_unlock_key)
@@ -99,10 +99,7 @@ impl UserConfiguration {
             }
         }
         let mut unencrypted_data: [u8; 64] = [0; 64];
-        let key = en_scrypt(
-            password.as_bytes(),
-            &self.scrypt_config,
-        )?;
+        let key = en_scrypt(password.as_bytes(), &self.scrypt_config)?;
         let mut aes = AesGcm::new(
             KeySize::KeySize256,
             &key,
@@ -122,9 +119,17 @@ impl UserConfiguration {
         }
     }
 
-    fn encrypt(&mut self, password: &str) -> Result<(), SqrlError> {
+    fn update_keys(
+        &mut self,
+        password: &str,
+        identity_master_key: [u8; 32],
+        identity_lock_key: [u8; 32],
+    ) -> Result<(), SqrlError> {
         let mut random = StdRng::from_entropy();
-        let mut encrypted_data: [u8; 32] = [0; 32];
+        let mut encrypted_data: [u8; 64] = [0; 64];
+        let mut to_encrypt = Vec::new();
+        to_encrypt.write(&identity_master_key);
+        to_encrypt.write(&identity_lock_key);
 
         let key = mut_en_scrypt(
             password.as_bytes(),
@@ -139,11 +144,18 @@ impl UserConfiguration {
             self.aad()?.as_slice(),
         );
         aes.encrypt(
-            &self.identity_master_key,
+            &to_encrypt,
             &mut encrypted_data,
             &mut self.verification_data,
         );
-        self.identity_master_key = encrypted_data;
+
+        for i in 0..64 {
+            if i < 32 {
+                self.identity_master_key[i] = encrypted_data[i];
+            } else {
+                self.identity_lock_key[i - 32] = encrypted_data[i];
+            }
+        }
 
         Ok(())
     }

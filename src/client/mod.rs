@@ -11,12 +11,11 @@ use self::{
     writable_datablock::WritableDataBlock,
 };
 use crate::{
-    common::{convert_vec, en_hash},
+    common::{convert_vec, decode_textual_identity, en_hash, validate_textual_identity},
     error::SqrlError,
 };
 use byteorder::{LittleEndian, WriteBytesExt};
 use crypto::{
-    digest::Digest,
     ed25519::{keypair, signature},
     hmac::Hmac,
     mac::Mac,
@@ -42,7 +41,6 @@ const FILE_HEADER: &str = "sqrldata";
 pub(crate) const SCRYPT_DEFAULT_LOG_N: u8 = 9;
 pub(crate) const SCRYPT_DEFAULT_R: u32 = 256;
 pub(crate) const SCRYPT_DEFAULT_P: u32 = 1;
-const TEXT_IDENTITY_ALPHABET: &str = "23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz";
 
 trait SqrlStorage
 where
@@ -87,7 +85,7 @@ impl SqrlClient {
         // 3. EnHash the IUK to become the Identity Master Key
 
         // 4. EnScrypt the password and use it to encrypt the IUK
-        let user_configuration = UserConfiguration::new(identity_master_key);
+        let user_configuration = UserConfiguration::new(password, identity_master_key, [9; 32])?;
 
         Ok((
             SqrlClient {
@@ -99,8 +97,11 @@ impl SqrlClient {
         ))
     }
 
-    // TODO
-    pub fn unlock_with_rescue_code(&mut self, _rescue_code: &str) {}
+    // TODO: Do I just want to get the rescue code, and then regenerate everything else?
+    pub fn unlock_with_rescue_code(&self, rescue_code: &str) -> Result<[u8; 32], SqrlError> {
+        self.identity_unlock
+            .decrypt_identity_unlock_key(rescue_code)
+    }
 
     pub fn verify(&mut self, password: &str) -> Result<(), SqrlError> {
         self.user_configuration.verify(password)?;
@@ -311,41 +312,13 @@ impl SqrlStorage for SqrlClient {
     }
 
     fn from_textual_identity_format(input: &str) -> Result<Self, SqrlError> {
-        // TODO
-        let mut line_num: u8 = 0;
-        let mut output: [u8; 32] = [0; 32];
-        let mut hasher = Sha256::new();
-        for line in input.lines() {
-            // Take each character and convert it to value
-            let mut bytes: Vec<u8> = Vec::new();
-            for (_, c) in line[..line.len() - 1].char_indices() {
-                let character_value = match TEXT_IDENTITY_ALPHABET.match_indices(c).next() {
-                    Some((index, _)) => index,
-                    None => {
-                        return Err(SqrlError::new(
-                            "Unable to decode textual identity format!".to_string(),
-                        ))
-                    }
-                };
-                bytes.push(character_value as u8);
-            }
-            // Add the line number (0-based) as last
-            bytes.push(line_num);
-
-            // Hash the results
-            hasher.input(&bytes);
-            hasher.result(&mut output);
-
-            // mod 56 the result and compare with the last character
-            // TODO
-
-            // Get ready for the next iteration
-            hasher.reset();
-            line_num += 1;
+        validate_textual_identity(input)?;
+        let mut data = decode_textual_identity(input)?;
+        // Add back the proper file header
+        for b in FILE_HEADER.bytes().rev() {
+            data.push_front(b);
         }
-
-        let (client, _) = SqrlClient::new("password")?;
-        Ok(client)
+        SqrlClient::from_binary(data)
     }
 
     fn to_textual_identity_format(&self) -> Result<String, SqrlError> {
@@ -392,52 +365,42 @@ impl KeyPair {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::{rngs::StdRng, RngCore, SeedableRng};
-    use std::fs::remove_file;
+
+    const TEST_FILE_PATH: &str = "test_resources/Spec-Vectors-Identity.sqrl";
+    const TEST_FILE_PASSWORD: &str = "Zingo-Bingo-Slingo-Dingo";
+    const TEST_FILE_RESCUE_CODE: &str = "1198-8748-7132-2838-8318-7570";
+    const TEST_FILE_TEXTUAL_IDENTITY: &str = "KKcC 3BaX akxc Xwbf xki7\nk7mF GHhg jQes gzWd 6TrK\nvMsZ dBtB pZbC zsz8 cUWj\nDtS2 ZK2s ZdAQ 8Yx3 iDyt\nQuXt CkTC y6gc qG8n Xfj9\nbHDA 422";
 
     #[test]
     fn load_test_data() {
-        let mut client =
-            SqrlClient::from_file("test_resources/Spec-Vectors-Identity.sqrl").unwrap();
-        client.verify("Zingo-Bingo-Slingo-Dingo").unwrap();
+        let mut client = SqrlClient::from_file(TEST_FILE_PATH).unwrap();
+        client.verify(TEST_FILE_PASSWORD).unwrap();
+    }
+
+    #[test]
+    fn load_then_write_test_data() {
+        let mut client = SqrlClient::from_file(TEST_FILE_PATH).unwrap();
+        client.verify(TEST_FILE_PASSWORD).unwrap();
+        let written_file_path = "load_then_write_test_data.sqrl";
+        client.to_file(written_file_path).unwrap();
+        let expected = std::fs::read(TEST_FILE_PATH).unwrap();
+        let actual = std::fs::read(written_file_path).unwrap();
+        assert_eq!(expected, actual, "Output did not match test file!");
+        let _ = std::fs::remove_file(written_file_path);
     }
 
     #[test]
     fn try_rescue_code() {
-        let client = SqrlClient::from_file("test_resources/Spec-Vectors-Identity.sqrl").unwrap();
+        let client = SqrlClient::from_file(TEST_FILE_PATH).unwrap();
         client
-            .identity_unlock
-            .decrypt_identity_unlock_key("1198-8748-7132-2838-8318-7570")
+            .unlock_with_rescue_code(TEST_FILE_RESCUE_CODE)
             .unwrap();
     }
 
     #[test]
-    fn it_can_write_and_read_empty() {
-        let mut random = StdRng::from_entropy();
-        let file = format!("test{}.bin", random.next_u64());
-        let (client, _) = SqrlClient::new("password").unwrap();
-
-        client
-            .to_file(&file)
-            .expect("Failed to write identity information");
-        let read_client = SqrlClient::from_file(&file).expect("Did not read successfully");
-        assert_eq!(client, read_client);
-
-        remove_file(file).expect("Failed to delete test file");
-    }
-
-    #[test]
-    fn it_can_write_and_read_empty_previous_identity() {
-        let mut random = StdRng::from_entropy();
-        let file = format!("test{}.bin", random.next_u64());
-        let (client, _) = SqrlClient::new("password").unwrap();
-
-        client
-            .to_file(&file)
-            .expect("Failed to write identity information");
-        let read_client = SqrlClient::from_file(&file).expect("Did not read successfully");
-        assert_eq!(client, read_client);
-
-        remove_file(file).expect("Failed to delete test file");
+    fn try_textual_identity_loading() {
+        let mut client =
+            SqrlClient::from_textual_identity_format(TEST_FILE_TEXTUAL_IDENTITY).unwrap();
+        client.verify(TEST_FILE_PASSWORD).unwrap();
     }
 }
