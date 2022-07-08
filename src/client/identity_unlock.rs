@@ -78,13 +78,11 @@ impl IdentityUnlock {
     ) -> Result<[u8; 32], SqrlError> {
         let mut unencrypted_data: [u8; 32] = [0; 32];
         let decoded_rescue_key = decode_rescue_code(rescue_code);
-        println!("Scrypt config: {:?}", &self.scrypt_config);
         let key = en_scrypt(&decoded_rescue_key.as_bytes(), &self.scrypt_config)?;
         print!("Key: ");
         for b in &key {
             print!("{:#02X}, ", b);
         }
-        println!("");
 
         let mut aes = AesGcm::new(
             KeySize::KeySize256,

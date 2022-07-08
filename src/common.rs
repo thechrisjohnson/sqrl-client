@@ -177,6 +177,5 @@ pub(crate) fn decode_rescue_code(rescue_code: &str) -> String {
         result.push(c);
     }
 
-    println!("{}", &result);
     result
 }
