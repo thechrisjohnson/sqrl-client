@@ -1,8 +1,8 @@
+use super::common::EMPTY_NONCE;
 use super::readable_vector::ReadableVector;
-use super::scrypt_config::ScryptConfig;
+use super::scrypt::{en_scrypt, mut_en_scrypt, Scrypt};
 use super::writable_datablock::WritableDataBlock;
 use super::DataType;
-use crate::common::{en_scrypt, mut_en_scrypt, EMPTY_NONCE};
 use crate::error::SqrlError;
 use byteorder::{LittleEndian, WriteBytesExt};
 use crypto::aead::{AeadDecryptor, AeadEncryptor};
@@ -21,7 +21,7 @@ const RESCUE_CODE_ALPHABET: [char; 10] = ['0', '1', '2', '3', '4', '5', '6', '7'
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct IdentityUnlockData {
-    scrypt_config: ScryptConfig,
+    scrypt_config: Scrypt,
     identity_unlock_key: [u8; 32],
     verification_data: [u8; 16],
 }
@@ -29,7 +29,7 @@ pub(crate) struct IdentityUnlockData {
 impl IdentityUnlockData {
     pub(crate) fn new(identity_unlock_key: [u8; 32]) -> Result<(Self, String), SqrlError> {
         let mut identity_unlock = IdentityUnlockData {
-            scrypt_config: ScryptConfig::new(),
+            scrypt_config: Scrypt::new(),
             identity_unlock_key: [0; 32],
             verification_data: [0; 16],
         };
@@ -122,7 +122,7 @@ impl WritableDataBlock for IdentityUnlockData {
 
     fn from_binary(binary: &mut VecDeque<u8>) -> Result<Self, SqrlError> {
         Ok(IdentityUnlockData {
-            scrypt_config: ScryptConfig::from_binary(binary)?,
+            scrypt_config: Scrypt::from_binary(binary)?,
             identity_unlock_key: binary.next_sub_array(32)?.as_slice().try_into()?,
             verification_data: binary.next_sub_array(16)?.as_slice().try_into()?,
         })

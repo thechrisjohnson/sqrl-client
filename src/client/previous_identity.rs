@@ -1,5 +1,5 @@
+use super::common::EMPTY_NONCE;
 use super::{readable_vector::ReadableVector, writable_datablock::WritableDataBlock, DataType};
-use crate::common::EMPTY_NONCE;
 use crate::error::SqrlError;
 use byteorder::{LittleEndian, WriteBytesExt};
 use crypto::aead::{AeadDecryptor, AeadEncryptor};

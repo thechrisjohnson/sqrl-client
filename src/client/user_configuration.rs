@@ -1,11 +1,10 @@
 use super::{
-    readable_vector::ReadableVector, scrypt_config::ScryptConfig,
-    writable_datablock::WritableDataBlock, DataType,
+    readable_vector::ReadableVector,
+    scrypt::{en_scrypt, mut_en_scrypt, Scrypt},
+    writable_datablock::WritableDataBlock,
+    DataType,
 };
-use crate::{
-    common::{en_scrypt, mut_en_scrypt},
-    error::SqrlError,
-};
+use crate::error::SqrlError;
 use byteorder::{LittleEndian, WriteBytesExt};
 use crypto::{
     aead::{AeadDecryptor, AeadEncryptor},
@@ -18,7 +17,7 @@ use std::{collections::VecDeque, convert::TryInto, io::Write};
 #[derive(Debug, PartialEq)]
 pub(crate) struct UserConfiguration {
     aes_gcm_iv: [u8; 12],
-    scrypt_config: ScryptConfig,
+    scrypt_config: Scrypt,
     option_flags: u16,
     hint_length: u8,
     pw_verify_sec: u8,
@@ -36,7 +35,7 @@ impl UserConfiguration {
     ) -> Result<Self, SqrlError> {
         let mut config = UserConfiguration {
             aes_gcm_iv: [0; 12],
-            scrypt_config: ScryptConfig::new(),
+            scrypt_config: Scrypt::new(),
             option_flags: 0,
             hint_length: 0,
             pw_verify_sec: 5,
@@ -175,7 +174,7 @@ impl WritableDataBlock for UserConfiguration {
         binary.skip(2);
 
         let aes_gcm_iv = binary.next_sub_array(12)?.as_slice().try_into()?;
-        let scrypt_config = ScryptConfig::from_binary(binary)?;
+        let scrypt_config = Scrypt::from_binary(binary)?;
         let option_flags = binary.next_u16()?;
         let hint_length = binary
             .pop_front()

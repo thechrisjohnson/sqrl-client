@@ -1,5 +1,4 @@
 pub mod client;
-pub(crate) mod common;
 pub mod error;
 
 extern crate byteorder;

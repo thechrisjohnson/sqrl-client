@@ -1,33 +1,33 @@
+mod common;
 mod identity_unlock;
 mod previous_identity;
 mod readable_vector;
-pub(crate) mod scrypt_config;
+pub(crate) mod scrypt;
 mod user_configuration;
 mod writable_datablock;
 
 use self::{
-    identity_unlock::IdentityUnlockData, previous_identity::PreviousIdentityData,
+    common::xor, identity_unlock::IdentityUnlockData, previous_identity::PreviousIdentityData,
     readable_vector::ReadableVector, user_configuration::UserConfiguration,
     writable_datablock::WritableDataBlock,
 };
-use crate::{
-    common::{convert_vec, decode_textual_identity, en_hash, validate_textual_identity},
-    error::SqrlError,
-};
+use crate::error::SqrlError;
 use byteorder::{LittleEndian, WriteBytesExt};
 use crypto::{
     curve25519::ge_scalarmult_base,
+    digest::Digest,
     ed25519::{keypair, signature},
     hmac::Hmac,
     mac::Mac,
     sha2::Sha256,
 };
+use num_bigint::BigUint;
+use num_traits::{FromPrimitive, ToPrimitive};
 use rand::{prelude::StdRng, RngCore, SeedableRng};
 use std::{collections::VecDeque, fs::File, io::Write};
 use url::{Host, Url};
 
 // The configuration options for the SqrlClient
-// TODO: Is this something that should be handled by the client and not the lib
 pub const CHECK_FOR_UPDATES: u16 = 0x0001;
 pub const UPDATE_ANONYMOUSLY: u16 = 0x0002;
 pub const SQRL_ONLY_LOGIN: u16 = 0x0004;
@@ -39,9 +39,11 @@ pub const CLEAR_DATA_ON_IDLE: u16 = 0x0080;
 pub const WARN_NON_CPS: u16 = 0x0100;
 
 const FILE_HEADER: &str = "sqrldata";
-pub(crate) const SCRYPT_DEFAULT_LOG_N: u8 = 9;
-pub(crate) const SCRYPT_DEFAULT_R: u32 = 256;
-pub(crate) const SCRYPT_DEFAULT_P: u32 = 1;
+const TEXT_IDENTITY_ALPHABET: [char; 56] = [
+    '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K', 'L',
+    'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f',
+    'g', 'h', 'i', 'j', 'k', 'm', 'n', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
+];
 
 trait SqrlStorage
 where
@@ -415,6 +417,112 @@ impl KeyPair {
     pub fn sign(&self, request: &[u8]) -> [u8; 64] {
         signature(request, &self.private_key)
     }
+}
+
+fn en_hash(input: &[u8]) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    hasher.input(input);
+    let mut output: [u8; 32] = [0; 32];
+    let mut hash_result: [u8; 32] = [0; 32];
+    for _ in 0..16 {
+        hasher.result(&mut hash_result);
+        hasher.reset();
+        hasher.input(&hash_result);
+        xor(&mut output, &hash_result);
+    }
+
+    output
+}
+
+fn validate_textual_identity(textual_identity: &str) -> Result<(), SqrlError> {
+    let mut line_num: u8 = 0;
+    let mut output: [u8; 32] = [0; 32];
+    let mut hasher = Sha256::new();
+    for line in textual_identity.lines() {
+        // Take each character and convert it to value
+        let mut bytes: Vec<u8> = Vec::new();
+        let trimmed_line = line.trim();
+        for c in trimmed_line[..trimmed_line.len() - 1].chars() {
+            if c == ' ' {
+                continue;
+            }
+            bytes.push(c as u8);
+        }
+        // Add the line number (0-based) as last
+        bytes.push(line_num);
+
+        // Hash the results
+        hasher.input(&bytes);
+        hasher.result(&mut output);
+
+        // mod 56 the result and compare with the last character
+        let hash = BigUint::from_bytes_le(&output);
+        if let Some(result) = (hash % 56u8).to_usize() {
+            // If they don't match, the line is invalid
+            if TEXT_IDENTITY_ALPHABET[result]
+                != trimmed_line.chars().nth(trimmed_line.len() - 1).unwrap()
+            {
+                return Err(SqrlError::new(
+                    "Unable to decode textual identity format! Checksum fail.".to_string(),
+                ));
+            }
+        } else {
+            return Err(SqrlError::new(
+                "Unable to decode textual identity format! Checksum fail".to_string(),
+            ));
+        }
+
+        // Get ready for the next iteration
+        hasher.reset();
+        line_num += 1;
+    }
+    Ok(())
+}
+
+fn decode_textual_identity(textual_identity: &str) -> Result<VecDeque<u8>, SqrlError> {
+    let mut data = BigUint::from_u8(0).unwrap();
+    for line in textual_identity.lines().rev() {
+        let trimmed_line = line.trim();
+        // Go through the line from the back to the front (after removing the last character)
+        for c in trimmed_line[..trimmed_line.len() - 1].chars().rev() {
+            if c == ' ' {
+                continue;
+            }
+
+            if let Some(index) = find_char_in_array(&TEXT_IDENTITY_ALPHABET, c) {
+                data *= 56u32;
+                data += index;
+            } else {
+                return Err(SqrlError::new(
+                    "Unable to decode textual identity!".to_string(),
+                ));
+            }
+        }
+    }
+
+    Ok(convert_vec(data.to_bytes_le()))
+}
+
+fn find_char_in_array(array: &[char], character: char) -> Option<usize> {
+    for i in 0..array.len() {
+        if array[i] == character {
+            return Some(i);
+        }
+    }
+
+    None
+}
+
+fn convert_vec(mut input: Vec<u8>) -> VecDeque<u8> {
+    let mut new_vec = VecDeque::new();
+    loop {
+        match input.pop() {
+            Some(x) => new_vec.push_front(x),
+            None => break,
+        };
+    }
+
+    new_vec
 }
 
 #[cfg(test)]
