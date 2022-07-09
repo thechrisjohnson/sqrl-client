@@ -2,30 +2,33 @@ use super::readable_vector::ReadableVector;
 use super::scrypt_config::ScryptConfig;
 use super::writable_datablock::WritableDataBlock;
 use super::DataType;
-use crate::common::{
-    decode_rescue_code, en_scrypt, generate_rescue_code, mut_en_scrypt, EMPTY_NONCE,
-};
+use crate::common::{en_scrypt, mut_en_scrypt, EMPTY_NONCE};
 use crate::error::SqrlError;
 use byteorder::{LittleEndian, WriteBytesExt};
 use crypto::aead::{AeadDecryptor, AeadEncryptor};
 use crypto::aes::KeySize;
 use crypto::aes_gcm::AesGcm;
+use num_bigint::BigUint;
+use num_traits::ToPrimitive;
+use rand::prelude::StdRng;
+use rand::{RngCore, SeedableRng};
 use std::collections::VecDeque;
 use std::convert::TryInto;
 use std::io::Write;
 
 const RESCUE_CODE_SCRYPT_TIME: u8 = 5;
+const RESCUE_CODE_ALPHABET: [char; 10] = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
 
 #[derive(Debug, PartialEq)]
-pub(crate) struct IdentityUnlock {
+pub(crate) struct IdentityUnlockData {
     scrypt_config: ScryptConfig,
     identity_unlock_key: [u8; 32],
     verification_data: [u8; 16],
 }
 
-impl IdentityUnlock {
+impl IdentityUnlockData {
     pub(crate) fn new(identity_unlock_key: [u8; 32]) -> Result<(Self, String), SqrlError> {
-        let mut identity_unlock = IdentityUnlock {
+        let mut identity_unlock = IdentityUnlockData {
             scrypt_config: ScryptConfig::new(),
             identity_unlock_key: [0; 32],
             verification_data: [0; 16],
@@ -108,7 +111,7 @@ impl IdentityUnlock {
     }
 }
 
-impl WritableDataBlock for IdentityUnlock {
+impl WritableDataBlock for IdentityUnlockData {
     fn get_type(&self) -> DataType {
         DataType::RescueCode
     }
@@ -118,7 +121,7 @@ impl WritableDataBlock for IdentityUnlock {
     }
 
     fn from_binary(binary: &mut VecDeque<u8>) -> Result<Self, SqrlError> {
-        Ok(IdentityUnlock {
+        Ok(IdentityUnlockData {
             scrypt_config: ScryptConfig::from_binary(binary)?,
             identity_unlock_key: binary.next_sub_array(32)?.as_slice().try_into()?,
             verification_data: binary.next_sub_array(16)?.as_slice().try_into()?,
@@ -131,4 +134,41 @@ impl WritableDataBlock for IdentityUnlock {
         output.write(&self.verification_data)?;
         Ok(())
     }
+}
+
+fn generate_rescue_code() -> String {
+    let mut random = StdRng::from_entropy();
+    let mut rescue_code_data: [u8; 32] = [0; 32];
+    random.fill_bytes(&mut rescue_code_data);
+
+    let mut num = BigUint::from_bytes_be(&rescue_code_data);
+    let mut rescue_code = String::new();
+    let mut count = 0;
+    for _ in 0..24 {
+        let remainder = &num % 10u8;
+        num /= 10u8;
+        let character = RESCUE_CODE_ALPHABET[remainder.to_usize().unwrap()];
+        rescue_code.push(character);
+
+        // Every four characters add a hyphen
+        count += 1;
+        if count == 4 {
+            count = 0;
+            rescue_code.push('-');
+        }
+    }
+
+    rescue_code
+}
+
+fn decode_rescue_code(rescue_code: &str) -> String {
+    let mut result = String::new();
+    for c in rescue_code.chars() {
+        if c == '-' {
+            continue;
+        }
+        result.push(c);
+    }
+
+    result
 }

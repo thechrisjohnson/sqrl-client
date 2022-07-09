@@ -6,7 +6,7 @@ mod user_configuration;
 mod writable_datablock;
 
 use self::{
-    identity_unlock::IdentityUnlock, previous_identity::PreviousIdentityData,
+    identity_unlock::IdentityUnlockData, previous_identity::PreviousIdentityData,
     readable_vector::ReadableVector, user_configuration::UserConfiguration,
     writable_datablock::WritableDataBlock,
 };
@@ -16,6 +16,7 @@ use crate::{
 };
 use byteorder::{LittleEndian, WriteBytesExt};
 use crypto::{
+    curve25519::ge_scalarmult_base,
     ed25519::{keypair, signature},
     hmac::Hmac,
     mac::Mac,
@@ -67,25 +68,28 @@ where
 #[derive(Debug, PartialEq)]
 pub struct SqrlClient {
     user_configuration: UserConfiguration,
-    identity_unlock: IdentityUnlock,
+    identity_unlock: IdentityUnlockData,
     previous_identities: Option<PreviousIdentityData>,
 }
 
 impl SqrlClient {
     pub fn new(password: &str) -> Result<(Self, String), SqrlError> {
-        // 1. Generate a random 256-bit value (Known as the Identity Unlock Key)
+        // Generate a random identity unlock key base
         let mut random = StdRng::from_entropy();
         let mut identity_unlock_key: [u8; 32] = [0; 32];
         random.fill_bytes(&mut identity_unlock_key);
+
+        // From the identity unlock key, generate the identity lock key and identity master key
+        // NOTE: The identity_lock_key is the "public key" for an ECDHKA ED25519 where the private key is the identity unlock key
         let identity_master_key = en_hash(&identity_unlock_key);
+        let identity_lock_key = ge_scalarmult_base(&identity_unlock_key).to_bytes();
 
-        let (identity_unlock, rescue_code) = IdentityUnlock::new(identity_unlock_key)?;
+        // Encrypt the identity unlock key with a random rescue code to return
+        let (identity_unlock, rescue_code) = IdentityUnlockData::new(identity_unlock_key)?;
 
-        // 2. Use ECDHA (Diffie-Helman with EC) to create a "Encrypted Identity Lock Key"
-        // 3. EnHash the IUK to become the Identity Master Key
-
-        // 4. EnScrypt the password and use it to encrypt the IUK
-        let user_configuration = UserConfiguration::new(password, identity_master_key, [9; 32])?;
+        // Encrypt the identity master key and identity lock key in
+        let user_configuration =
+            UserConfiguration::new(password, identity_master_key, identity_lock_key)?;
 
         Ok((
             SqrlClient {
@@ -146,6 +150,57 @@ impl SqrlClient {
         ))
     }
 
+    pub fn rekey_identity(
+        &mut self,
+        password: &str,
+        rescue_code: &str,
+    ) -> Result<String, SqrlError> {
+        // Verify we can decrypt the current identity unlock key
+        let current_identity_unlock_key = self
+            .identity_unlock
+            .decrypt_identity_unlock_key(rescue_code)?;
+
+        // Generate a new identity unlock key
+        let mut random = StdRng::from_entropy();
+        let mut new_identity_unlock_key: [u8; 32] = [0; 32];
+        random.fill_bytes(&mut new_identity_unlock_key);
+
+        // From the identity unlock key, generate the new identity lock key and identity master key
+        let new_identity_master_key = en_hash(&new_identity_unlock_key);
+        let new_identity_lock_key = ge_scalarmult_base(&new_identity_unlock_key).to_bytes();
+
+        // Encrypt the identity unlock key with a random rescue code to return
+        let (new_identity_unlock, new_rescue_code) =
+            IdentityUnlockData::new(new_identity_unlock_key)?;
+        self.identity_unlock = new_identity_unlock;
+
+        // Decrypt the previous identities and add the new one, re-encrypting with the new identity master key
+        if let Some(ref mut previous_identities) = self.previous_identities {
+            let current_identity_master_key = self
+                .user_configuration
+                .decrypt_user_identity_key(&password)?;
+
+            previous_identities.rekey_previous_identities(
+                &current_identity_master_key,
+                &new_identity_master_key,
+                Some(current_identity_unlock_key),
+            )?;
+        } else {
+            let mut previous_identities = PreviousIdentityData::new();
+            previous_identities
+                .add_previous_identity(&new_identity_master_key, current_identity_unlock_key)?;
+            self.previous_identities = Some(previous_identities);
+        }
+
+        self.user_configuration.update_keys(
+            password,
+            new_identity_master_key,
+            new_identity_lock_key,
+        )?;
+
+        Ok(new_rescue_code)
+    }
+
     fn get_keys(
         &self,
         password: &str,
@@ -188,7 +243,7 @@ impl SqrlClient {
         }
 
         let mut user_configuration: Option<UserConfiguration> = None;
-        let mut identity_unlock: Option<IdentityUnlock> = None;
+        let mut identity_unlock: Option<IdentityUnlockData> = None;
         let mut previous_identities: Option<PreviousIdentityData> = None;
 
         loop {
@@ -221,7 +276,7 @@ impl SqrlClient {
                         ));
                     }
 
-                    identity_unlock = Some(IdentityUnlock::from_binary(&mut binary)?)
+                    identity_unlock = Some(IdentityUnlockData::from_binary(&mut binary)?)
                 }
                 DataType::PreviousIdentity => {
                     if previous_identities != None {

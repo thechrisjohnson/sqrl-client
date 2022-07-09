@@ -89,37 +89,7 @@ impl UserConfiguration {
         Ok(())
     }
 
-    fn decrypt(&self, password: &str) -> Result<[u8; 64], SqrlError> {
-        let mut encrypted_data: [u8; 64] = [0; 64];
-        for i in 0..64 {
-            if i < 32 {
-                encrypted_data[i] = self.identity_master_key[i];
-            } else {
-                encrypted_data[i] = self.identity_lock_key[i - 32];
-            }
-        }
-        let mut unencrypted_data: [u8; 64] = [0; 64];
-        let key = en_scrypt(password.as_bytes(), &self.scrypt_config)?;
-        let mut aes = AesGcm::new(
-            KeySize::KeySize256,
-            &key,
-            &self.aes_gcm_iv,
-            self.aad()?.as_slice(),
-        );
-        if aes.decrypt(
-            &encrypted_data,
-            &mut unencrypted_data,
-            &self.verification_data,
-        ) {
-            Ok(unencrypted_data)
-        } else {
-            return Err(SqrlError::new(
-                "Decryption failed. Check your password!".to_owned(),
-            ));
-        }
-    }
-
-    fn update_keys(
+    pub(crate) fn update_keys(
         &mut self,
         password: &str,
         identity_master_key: [u8; 32],
@@ -128,8 +98,8 @@ impl UserConfiguration {
         let mut random = StdRng::from_entropy();
         let mut encrypted_data: [u8; 64] = [0; 64];
         let mut to_encrypt = Vec::new();
-        to_encrypt.write(&identity_master_key);
-        to_encrypt.write(&identity_lock_key);
+        to_encrypt.write(&identity_master_key)?;
+        to_encrypt.write(&identity_lock_key)?;
 
         let key = mut_en_scrypt(
             password.as_bytes(),
@@ -158,6 +128,36 @@ impl UserConfiguration {
         }
 
         Ok(())
+    }
+
+    fn decrypt(&self, password: &str) -> Result<[u8; 64], SqrlError> {
+        let mut encrypted_data: [u8; 64] = [0; 64];
+        for i in 0..64 {
+            if i < 32 {
+                encrypted_data[i] = self.identity_master_key[i];
+            } else {
+                encrypted_data[i] = self.identity_lock_key[i - 32];
+            }
+        }
+        let mut unencrypted_data: [u8; 64] = [0; 64];
+        let key = en_scrypt(password.as_bytes(), &self.scrypt_config)?;
+        let mut aes = AesGcm::new(
+            KeySize::KeySize256,
+            &key,
+            &self.aes_gcm_iv,
+            self.aad()?.as_slice(),
+        );
+        if aes.decrypt(
+            &encrypted_data,
+            &mut unencrypted_data,
+            &self.verification_data,
+        ) {
+            Ok(unencrypted_data)
+        } else {
+            return Err(SqrlError::new(
+                "Decryption failed. Check your password!".to_owned(),
+            ));
+        }
     }
 }
 

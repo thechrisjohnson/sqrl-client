@@ -9,10 +9,8 @@ use crypto::{
 };
 use num_bigint::BigUint;
 use num_traits::{FromPrimitive, ToPrimitive};
-use rand::{prelude::StdRng, RngCore, SeedableRng};
 use std::{collections::VecDeque, time::Instant};
 
-const RESCUE_CODE_ALPHABET: [char; 10] = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
 const TEXT_IDENTITY_ALPHABET: [char; 56] = [
     '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K', 'L',
     'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f',
@@ -142,43 +140,6 @@ pub(crate) fn convert_vec(mut input: Vec<u8>) -> VecDeque<u8> {
     }
 
     new_vec
-}
-
-pub(crate) fn generate_rescue_code() -> String {
-    let mut random = StdRng::from_entropy();
-    let mut rescue_code_data: [u8; 32] = [0; 32];
-    random.fill_bytes(&mut rescue_code_data);
-
-    let mut num = BigUint::from_bytes_be(&rescue_code_data);
-    let mut rescue_code = String::new();
-    let mut count = 0;
-    for _ in 0..24 {
-        let remainder = &num % 10u8;
-        num /= 10u8;
-        let character = RESCUE_CODE_ALPHABET[remainder.to_usize().unwrap()];
-        rescue_code.push(character);
-
-        // Every four characters add a hyphen
-        count += 1;
-        if count == 4 {
-            count = 0;
-            rescue_code.push('-');
-        }
-    }
-
-    rescue_code
-}
-
-pub(crate) fn decode_rescue_code(rescue_code: &str) -> String {
-    let mut result = String::new();
-    for c in rescue_code.chars() {
-        if c == '-' {
-            continue;
-        }
-        result.push(c);
-    }
-
-    result
 }
 
 pub(crate) fn validate_textual_identity(textual_identity: &str) -> Result<(), SqrlError> {
