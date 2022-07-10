@@ -109,7 +109,13 @@ impl SqrlClient {
             .decrypt_identity_unlock_key(rescue_code)
     }
 
-    pub fn verify(&mut self, password: &str) -> Result<(), SqrlError> {
+    pub fn lock_identity(&self, password: &str) -> Result<(), SqrlError> {
+        // TODO: Just adding a basic call to remove warnings finish this`
+        let _ = self.user_configuration.decrypt_user_lock_key(password)?;
+        Ok(())
+    }
+
+    pub fn verify_password(&mut self, password: &str) -> Result<(), SqrlError> {
         self.user_configuration.verify(password)?;
         Ok(())
     }
@@ -537,13 +543,13 @@ mod tests {
     #[test]
     fn load_test_data() {
         let mut client = SqrlClient::from_file(TEST_FILE_PATH).unwrap();
-        client.verify(TEST_FILE_PASSWORD).unwrap();
+        client.verify_password(TEST_FILE_PASSWORD).unwrap();
     }
 
     #[test]
     fn load_then_write_test_data() {
         let mut client = SqrlClient::from_file(TEST_FILE_PATH).unwrap();
-        client.verify(TEST_FILE_PASSWORD).unwrap();
+        client.verify_password(TEST_FILE_PASSWORD).unwrap();
         let written_file_path = "load_then_write_test_data.sqrl";
         client.to_file(written_file_path).unwrap();
         let expected = std::fs::read(TEST_FILE_PATH).unwrap();
@@ -564,6 +570,6 @@ mod tests {
     fn try_textual_identity_loading() {
         let mut client =
             SqrlClient::from_textual_identity_format(TEST_FILE_TEXTUAL_IDENTITY).unwrap();
-        client.verify(TEST_FILE_PASSWORD).unwrap();
+        client.verify_password(TEST_FILE_PASSWORD).unwrap();
     }
 }
