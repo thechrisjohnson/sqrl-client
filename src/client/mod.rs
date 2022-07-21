@@ -300,7 +300,7 @@ impl SqrlClient {
 
         // We need to make sure we have all of the data we expect
         let user_access_check =
-            user_configuration.ok_or(SqrlError::new("No password data found!".to_owned()))?;
+            user_configuration.ok_or(SqrlError::new("No key data found!".to_owned()))?;
 
         let rescue_code_check =
             identity_unlock.ok_or(SqrlError::new("No rescue code data found!".to_owned()))?;
@@ -386,7 +386,7 @@ impl SqrlStorage for SqrlClient {
 
     fn to_textual_identity_format(&self) -> Result<String, SqrlError> {
         // TODO
-        Ok("".to_owned())
+        encode_textual_identity(self)
     }
 }
 
@@ -485,19 +485,34 @@ fn validate_textual_identity(textual_identity: &str) -> Result<(), SqrlError> {
     Ok(())
 }
 
+// TODO:
+fn encode_textual_identity(client: &SqrlClient) -> Result<String, SqrlError> {
+    let mut data = client.to_binary()?;
+    let num = BigUint::from_bytes_le(&data);
+    Ok("".to_string())
+}
+
 fn decode_textual_identity(textual_identity: &str) -> Result<VecDeque<u8>, SqrlError> {
     let mut data = BigUint::from_u8(0).unwrap();
-    for line in textual_identity.lines().rev() {
+    let mut power = BigUint::from_u8(0).unwrap();
+    let zero = BigUint::from_u8(0).unwrap();
+
+    for line in textual_identity.lines() {
         let trimmed_line = line.trim();
         // Go through the line from the back to the front (after removing the last character)
-        for c in trimmed_line[..trimmed_line.len() - 1].chars().rev() {
+        for c in trimmed_line[..trimmed_line.len() - 1].chars() {
             if c == ' ' {
                 continue;
             }
 
+            if power == zero {
+                power += 1u32;
+            } else {
+                power *= 56u32;
+            }
+
             if let Some(index) = find_char_in_array(&TEXT_IDENTITY_ALPHABET, c) {
-                data *= 56u32;
-                data += index;
+                data += index * &power;
             } else {
                 return Err(SqrlError::new(
                     "Unable to decode textual identity!".to_string(),
