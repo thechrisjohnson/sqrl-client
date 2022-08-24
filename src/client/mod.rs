@@ -53,7 +53,11 @@ where
     fn to_file(&self, file_path: &str) -> Result<(), SqrlError>;
     fn from_base64(input: &str) -> Result<Self, SqrlError>;
     fn to_base64(&self) -> Result<String, SqrlError>;
-    fn from_textual_identity_format(input: &str) -> Result<Self, SqrlError>;
+    fn from_textual_identity_format(
+        input: &str,
+        rescue_code: &str,
+        new_password: &str,
+    ) -> Result<Self, SqrlError>;
     fn to_textual_identity_format(&self) -> Result<String, SqrlError>;
 }
 
@@ -95,24 +99,41 @@ impl SqrlClient {
 
         Ok((
             SqrlClient {
-                user_configuration: user_configuration,
-                identity_unlock: identity_unlock,
+                user_configuration,
+                identity_unlock,
                 previous_identities: None,
             },
             rescue_code,
         ))
     }
 
+    fn from_identity_unlock(
+        identity_unlock: IdentityUnlockData,
+        rescue_code: &str,
+        new_password: &str,
+    ) -> Result<Self, SqrlError> {
+        let identity_unlock_key = identity_unlock.decrypt_identity_unlock_key(rescue_code)?;
+
+        // From the identity unlock key, generate the identity lock key and identity master key
+        // NOTE: The identity_lock_key is the "public key" for an ECDHKA ED25519 where the private key is the identity unlock key
+        let identity_master_key = en_hash(&identity_unlock_key);
+        let identity_lock_key = ge_scalarmult_base(&identity_unlock_key).to_bytes();
+
+        // Encrypt the identity master key and identity lock key in
+        let user_configuration =
+            UserConfiguration::new(new_password, identity_master_key, identity_lock_key)?;
+
+        Ok(SqrlClient {
+            user_configuration,
+            identity_unlock,
+            previous_identities: None,
+        })
+    }
+
     // TODO: Do I just want to get the rescue code, and then regenerate everything else?
     pub fn unlock_with_rescue_code(&self, rescue_code: &str) -> Result<[u8; 32], SqrlError> {
         self.identity_unlock
             .decrypt_identity_unlock_key(rescue_code)
-    }
-
-    pub fn lock_identity(&self, password: &str) -> Result<(), SqrlError> {
-        // TODO: Just adding a basic call to remove warnings finish this`
-        let _ = self.user_configuration.decrypt_user_lock_key(password)?;
-        Ok(())
     }
 
     pub fn verify_password(&mut self, password: &str) -> Result<(), SqrlError> {
@@ -374,14 +395,15 @@ impl SqrlStorage for SqrlClient {
         Ok(base64::encode_config(data, base64::URL_SAFE))
     }
 
-    fn from_textual_identity_format(input: &str) -> Result<Self, SqrlError> {
+    fn from_textual_identity_format(
+        input: &str,
+        rescue_code: &str,
+        new_password: &str,
+    ) -> Result<Self, SqrlError> {
         validate_textual_identity(input)?;
         let mut data = decode_textual_identity(input)?;
-        // Add back the proper file header
-        for b in FILE_HEADER.bytes().rev() {
-            data.push_front(b);
-        }
-        SqrlClient::from_binary(data)
+        let identity_unlock = IdentityUnlockData::from_binary(&mut data)?;
+        SqrlClient::from_identity_unlock(identity_unlock, rescue_code, new_password)
     }
 
     fn to_textual_identity_format(&self) -> Result<String, SqrlError> {
@@ -482,14 +504,53 @@ fn validate_textual_identity(textual_identity: &str) -> Result<(), SqrlError> {
         hasher.reset();
         line_num += 1;
     }
+
     Ok(())
 }
 
 // TODO:
 fn encode_textual_identity(client: &SqrlClient) -> Result<String, SqrlError> {
-    let mut data = client.to_binary()?;
-    let num = BigUint::from_bytes_le(&data);
-    Ok("".to_string())
+    let mut textual_identity = String::new();
+    // Get the binary representation of the identity unlock key
+    let mut data = Vec::new();
+    client.identity_unlock.to_binary(&mut data)?;
+
+    // Based on the number of numbers we're going to need,
+    // calculate the textual identity
+    let mut num = BigUint::from_bytes_le(&data);
+    let mut line = String::new();
+    for _ in 1..calculate_encoded_text_size(&data) {
+        if let Some(index) = (&num % 56u8).to_usize() {
+            num /= 56u8;
+            let c = TEXT_IDENTITY_ALPHABET[index];
+            line.push(c);
+            textual_identity.push(c);
+
+            if line.len() == 19 {}
+        }
+    }
+
+    Ok(textual_identity)
+}
+
+fn calculate_encoded_text_size(data: &Vec<u8>) -> u8 {
+    // Create a max value
+    let mut max = Vec::<u8>::new();
+    for _ in data {
+        max.push(u8::MAX);
+    }
+
+    // While we're not zero, keep dividing
+    let zero = BigUint::from_u8(0).unwrap();
+    let mut max_int = BigUint::from_bytes_le(&max);
+    let mut count = 0u8;
+
+    while max_int > zero {
+        max_int /= 56u8;
+        count += 1;
+    }
+
+    count
 }
 
 fn decode_textual_identity(textual_identity: &str) -> Result<VecDeque<u8>, SqrlError> {
@@ -583,8 +644,12 @@ mod tests {
 
     #[test]
     fn try_textual_identity_loading() {
-        let mut client =
-            SqrlClient::from_textual_identity_format(TEST_FILE_TEXTUAL_IDENTITY).unwrap();
+        let mut client = SqrlClient::from_textual_identity_format(
+            TEST_FILE_TEXTUAL_IDENTITY,
+            TEST_FILE_RESCUE_CODE,
+            TEST_FILE_PASSWORD,
+        )
+        .unwrap();
         client.verify_password(TEST_FILE_PASSWORD).unwrap();
     }
 }

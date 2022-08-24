@@ -105,6 +105,7 @@ impl UserConfiguration {
             &mut self.scrypt_config,
             self.pw_verify_sec,
         );
+
         random.fill_bytes(&mut self.aes_gcm_iv);
         let mut aes = AesGcm::new(
             KeySize::KeySize256,
@@ -112,6 +113,7 @@ impl UserConfiguration {
             &self.aes_gcm_iv,
             self.aad()?.as_slice(),
         );
+
         aes.encrypt(
             &to_encrypt,
             &mut encrypted_data,
