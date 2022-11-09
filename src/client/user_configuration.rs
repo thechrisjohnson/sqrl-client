@@ -63,7 +63,10 @@ impl UserConfiguration {
         Ok(result)
     }
 
-    pub(crate) fn decrypt_user_identity_key(&self, password: &str) -> Result<[u8; 32], SqrlError> {
+    pub(crate) fn decrypt_identity_master_key(
+        &self,
+        password: &str,
+    ) -> Result<[u8; 32], SqrlError> {
         let mut user_identity_key = [0; 32];
         let decrypted_data = self.decrypt(password)?;
         for n in 0..32 {
@@ -73,7 +76,7 @@ impl UserConfiguration {
         Ok(user_identity_key)
     }
 
-    pub(crate) fn decrypt_user_lock_key(&self, password: &str) -> Result<[u8; 32], SqrlError> {
+    pub(crate) fn decrypt_identity_lock_key(&self, password: &str) -> Result<[u8; 32], SqrlError> {
         let mut user_unlock_key = [0; 32];
         let decrypted_data = self.decrypt(password)?;
         for n in 0..32 {

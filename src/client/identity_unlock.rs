@@ -136,6 +136,7 @@ impl WritableDataBlock for IdentityUnlockData {
     }
 }
 
+// Generate a random rescue code for use in encrypting data
 fn generate_rescue_code() -> String {
     let mut random = StdRng::from_entropy();
     let mut rescue_code_data: [u8; 32] = [0; 32];
@@ -161,6 +162,7 @@ fn generate_rescue_code() -> String {
     rescue_code
 }
 
+// Remove the hyphens from the rescue code
 fn decode_rescue_code(rescue_code: &str) -> String {
     let mut result = String::new();
     for c in rescue_code.chars() {

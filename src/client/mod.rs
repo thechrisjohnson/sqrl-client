@@ -207,7 +207,7 @@ impl SqrlClient {
         if let Some(ref mut previous_identities) = self.previous_identities {
             let current_identity_master_key = self
                 .user_configuration
-                .decrypt_user_identity_key(&password)?;
+                .decrypt_identity_master_key(&password)?;
 
             previous_identities.rekey_previous_identities(
                 &current_identity_master_key,
@@ -243,7 +243,7 @@ impl SqrlClient {
 
         let key = self
             .user_configuration
-            .decrypt_user_identity_key(password)?;
+            .decrypt_identity_master_key(password)?;
         let mut hmac = Hmac::new(Sha256::new(), &key);
         hmac.input(data.as_bytes());
         let (public, private) = keypair(hmac.result().code());
