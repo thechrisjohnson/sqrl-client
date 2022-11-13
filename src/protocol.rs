@@ -1,3 +1,5 @@
+use std::fmt;
+
 // The current version of the sqrl protocol
 pub const PROTOCOL_VERSION: u64 = 1;
 
@@ -32,10 +34,10 @@ impl ClientRequest {
         }
     }
 
-    // TODO: Actuall encode the data
+    // TODO: Actually encode the data
     pub fn encode(&self) -> String {
-        let result = self.client.encode();
-
+        let mut result = format!("client={}", self.client.encode());
+        result = result + &format!("&server={}", self.server);
         result
     }
 }
@@ -44,29 +46,69 @@ pub struct ClientParameters {
     pub ver: u64,
     pub cmd: ClientCommand,
     pub idk: String,
-    pub pidk: Option<String>,
+    pub opt: Option<String>,
     pub btn: Option<u8>,
+    pub pidk: Option<String>,
+    pub ins: Option<String>,
+    pub pins: Option<String>,
+    pub suk: Option<String>,
+    pub vuk: Option<String>,
 }
 
 impl ClientParameters {
     pub fn new(
         cmd: ClientCommand,
         idk: String,
-        pidk: Option<String>,
+        opt: Option<String>,
         btn: Option<u8>,
+        pidk: Option<String>,
+        ins: Option<String>,
+        pins: Option<String>,
+        suk: Option<String>,
+        vuk: Option<String>
     ) -> ClientParameters {
         ClientParameters {
             ver: PROTOCOL_VERSION,
             cmd,
             idk,
-            pidk,
+            opt,
             btn,
+            pidk,
+            ins,
+            pins,
+            suk,
+            vuk
         }
     }
 
-    // TODO: Encode all the parameters
     pub fn encode(&self) -> String {
-        base64::encode_config("", base64::URL_SAFE)
+        let mut result = format!("ver={}", self.ver);
+        result = result + &format!("\ncmd={}", self.cmd.to_string());
+        result = result + &format!("\nidk={}", self.idk);
+
+        if let Some(opt) = &self.opt {
+            result = result + &format!("\nopt={}", opt);
+        }
+        if let Some(btn) = &self.btn {
+            result = result + &format!("\nbtn={}", btn);
+        }
+        if let Some(pidk) = &self.pidk {
+            result = result + &format!("\npidk={}", pidk);
+        }
+        if let Some(ins) = &self.ins {
+            result = result + &format!("\nins={}", ins);
+        }
+        if let Some(pins) = &self.pins {
+            result = result + &format!("\npins={}", pins);
+        }
+        if let Some(suk) = &self.suk {
+            result = result + &format!("\nsuk={}", suk);
+        }
+        if let Some(vuk) = &self.vuk {
+            result = result + &format!("\nvuk={}", vuk);
+        }
+
+        base64::encode_config(result, base64::URL_SAFE)
     }
 }
 
@@ -76,6 +118,18 @@ pub enum ClientCommand {
     Disable,
     Enable,
     Remove,
+}
+
+impl fmt::Display for ClientCommand {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ClientCommand::Query => write!(f, "query"),
+            ClientCommand::Ident => write!(f, "ident"),
+            ClientCommand::Disable => write!(f, "disable"),
+            ClientCommand::Enable => write!(f, "enable"),
+            ClientCommand::Remove => write!(f, "remove")
+        }
+    }
 }
 
 pub struct ServerResponse {
