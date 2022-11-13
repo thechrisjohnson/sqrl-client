@@ -230,6 +230,15 @@ impl SqrlClient {
         Ok(new_rescue_code)
     }
 
+    // TODO: Actually lock identity
+    pub fn lock_identity(
+        &self,
+        password: &str
+    ) -> Result<(), SqrlError> {
+        let _ = self.user_configuration.decrypt_identity_lock_key(&password)?;
+        Ok(())
+    }
+
     fn get_keys(
         &self,
         password: &str,
