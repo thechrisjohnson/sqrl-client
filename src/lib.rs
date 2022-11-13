@@ -1,5 +1,6 @@
 pub mod client;
 pub mod error;
+pub mod protocol;
 
 extern crate byteorder;
 extern crate crypto;

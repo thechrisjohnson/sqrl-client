@@ -28,15 +28,15 @@ use std::{collections::VecDeque, fs::File, io::Write};
 use url::{Host, Url};
 
 // The configuration options for the SqrlClient
-pub const CHECK_FOR_UPDATES: u16 = 0x0001;
-pub const UPDATE_ANONYMOUSLY: u16 = 0x0002;
-pub const SQRL_ONLY_LOGIN: u16 = 0x0004;
-pub const NO_SQRL_BYPASS: u16 = 0x0008;
-pub const WARN_MITM: u16 = 0x0010;
-pub const CLEAR_DATA_ON_SUSPEND: u16 = 0x0020;
-pub const CLEAR_DATA_ON_USER_SWITCH: u16 = 0x0040;
-pub const CLEAR_DATA_ON_IDLE: u16 = 0x0080;
-pub const WARN_NON_CPS: u16 = 0x0100;
+pub const CONFIG_CHECK_FOR_UPDATES: u16 = 0x1;
+pub const CONFIG_UPDATE_ANONYMOUSLY: u16 = 0x2;
+pub const CONFIG_SQRL_ONLY_LOGIN: u16 = 0x4;
+pub const CONFIG_NO_SQRL_BYPASS: u16 = 0x8;
+pub const CONFIG_WARN_MITM: u16 = 0x10;
+pub const CONFIG_CLEAR_DATA_ON_SUSPEND: u16 = 0x20;
+pub const CONFIG_CLEAR_DATA_ON_USER_SWITCH: u16 = 0x40;
+pub const CONFIG_CLEAR_DATA_ON_IDLE: u16 = 0x80;
+pub const CONFIG_WARN_NON_CPS: u16 = 0x100;
 
 const FILE_HEADER: &str = "sqrldata";
 const TEXT_IDENTITY_ALPHABET: [char; 56] = [
@@ -231,12 +231,21 @@ impl SqrlClient {
     }
 
     // TODO: Actually lock identity
-    pub fn lock_identity(
-        &self,
-        password: &str
-    ) -> Result<(), SqrlError> {
-        let _ = self.user_configuration.decrypt_identity_lock_key(&password)?;
+    pub fn lock_identity(&self, password: &str) -> Result<(), SqrlError> {
+        let _ = self
+            .user_configuration
+            .decrypt_identity_lock_key(&password)?;
         Ok(())
+    }
+
+    pub fn get_identity_public_key(
+        &self,
+        password: &str,
+        hostname: &str,
+        alternate_identity: Option<&str>,
+    ) -> Result<[u8; 64], SqrlError> {
+        let keys = self.get_keys(password, hostname, alternate_identity)?;
+        Ok(keys.public_key)
     }
 
     fn get_keys(
@@ -445,13 +454,13 @@ impl DataType {
     }
 }
 
-pub struct KeyPair {
-    pub private_key: [u8; 32],
-    pub public_key: [u8; 64],
+pub(crate) struct KeyPair {
+    pub(crate) private_key: [u8; 32],
+    pub(crate) public_key: [u8; 64],
 }
 
 impl KeyPair {
-    pub fn sign(&self, request: &[u8]) -> [u8; 64] {
+    pub(crate) fn sign(&self, request: &[u8]) -> [u8; 64] {
         signature(request, &self.private_key)
     }
 }
