@@ -526,9 +526,13 @@ fn validate_textual_identity(textual_identity: &str) -> Result<(), SqrlError> {
     Ok(())
 }
 
-// TODO:
 fn encode_textual_identity(client: &SqrlClient) -> Result<String, SqrlError> {
     let mut textual_identity = String::new();
+    let mut bytes: Vec<u8> = Vec::new();
+    let mut hasher = Sha256::new();
+    let mut output: [u8; 32] = [0; 32];
+    let mut line_number: u8 = 1;
+
     // Get the binary representation of the identity unlock key
     let mut data = Vec::new();
     client.identity_unlock.to_binary(&mut data)?;
@@ -536,15 +540,40 @@ fn encode_textual_identity(client: &SqrlClient) -> Result<String, SqrlError> {
     // Based on the number of numbers we're going to need,
     // calculate the textual identity
     let mut num = BigUint::from_bytes_le(&data);
-    let mut line = String::new();
-    for _ in 1..calculate_encoded_text_size(&data) {
+    let encoded_size = calculate_encoded_text_size(&data);
+    for character in 1..encoded_size {
         if let Some(index) = (&num % 56u8).to_usize() {
             num /= 56u8;
+            bytes.push(index as u8);
             let c = TEXT_IDENTITY_ALPHABET[index];
-            line.push(c);
             textual_identity.push(c);
 
-            if line.len() == 19 {}
+            // If we're at a multiple of 4, add a space
+            if bytes.len() % 4 == 0 {
+                textual_identity.push(' ');
+            } else if bytes.len() == 19 || character == encoded_size {
+                bytes.push(line_number);
+                hasher.input(&bytes);
+                hasher.result(&mut output);
+                // mod 56 the result and compare with the last character
+                let hash = BigUint::from_bytes_le(&output);
+                if let Some(result) = (hash % 56u8).to_usize() {
+                    textual_identity.push(TEXT_IDENTITY_ALPHABET[result]);
+                } else {
+                    return Err(SqrlError::new(
+                        "Unexpected error creating textual identity. This is a bug in the code."
+                            .to_string(),
+                    ));
+                }
+
+                // Now reset for the next line
+                if character != encoded_size {
+                    line_number += 1;
+                    bytes.clear();
+                    hasher.reset();
+                    textual_identity.push('\n');
+                }
+            }
         }
     }
 
@@ -632,7 +661,9 @@ mod tests {
     const TEST_FILE_PATH: &str = "test_resources/Spec-Vectors-Identity.sqrl";
     const TEST_FILE_PASSWORD: &str = "Zingo-Bingo-Slingo-Dingo";
     const TEST_FILE_RESCUE_CODE: &str = "1198-8748-7132-2838-8318-7570";
-    const TEST_FILE_TEXTUAL_IDENTITY: &str = "KKcC 3BaX akxc Xwbf xki7\nk7mF GHhg jQes gzWd 6TrK\nvMsZ dBtB pZbC zsz8 cUWj\nDtS2 ZK2s ZdAQ 8Yx3 iDyt\nQuXt CkTC y6gc qG8n Xfj9\nbHDA 422";
+    //const TEST_FILE_TEXTUAL_IDENTITY: &str = "KKcC 3BaX akxc Xwbf xki7\nk7mF GHhg jQes gzWd 6TrK\nvMsZ dBtB pZbC zsz8 cUWj\nDtS2 ZK2s ZdAQ 8Yx3 iDyt\nQuXt CkTC y6gc qG8n Xfj9\nbHDA 422";
+    const TEST_URL: &str =
+        "sqrl://sqrl.grc.com/cli.sqrl?nut=fXkb4MBToCm7&can=aHR0cHM6Ly9zcXJsLmdyYy5jb20vZGVtbw";
 
     #[test]
     fn load_test_data() {
@@ -660,7 +691,7 @@ mod tests {
             .unwrap();
     }
 
-    #[test]
+    /*#[test]
     fn try_textual_identity_loading() {
         let mut client = SqrlClient::from_textual_identity_format(
             TEST_FILE_TEXTUAL_IDENTITY,
@@ -669,5 +700,13 @@ mod tests {
         )
         .unwrap();
         client.verify_password(TEST_FILE_PASSWORD).unwrap();
+    }*/
+
+    #[test]
+    fn sign_reqeust() {
+        let client = SqrlClient::from_file(TEST_FILE_PATH).unwrap();
+        client
+            .sign_request(TEST_FILE_PASSWORD, TEST_URL, None, "")
+            .unwrap();
     }
 }

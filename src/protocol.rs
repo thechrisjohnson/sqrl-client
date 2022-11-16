@@ -65,7 +65,7 @@ impl ClientParameters {
         ins: Option<String>,
         pins: Option<String>,
         suk: Option<String>,
-        vuk: Option<String>
+        vuk: Option<String>,
     ) -> ClientParameters {
         ClientParameters {
             ver: PROTOCOL_VERSION,
@@ -77,7 +77,7 @@ impl ClientParameters {
             ins,
             pins,
             suk,
-            vuk
+            vuk,
         }
     }
 
@@ -127,7 +127,7 @@ impl fmt::Display for ClientCommand {
             ClientCommand::Ident => write!(f, "ident"),
             ClientCommand::Disable => write!(f, "disable"),
             ClientCommand::Enable => write!(f, "enable"),
-            ClientCommand::Remove => write!(f, "remove")
+            ClientCommand::Remove => write!(f, "remove"),
         }
     }
 }
