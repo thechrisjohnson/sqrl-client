@@ -67,7 +67,6 @@ where
 // + Load data from base64url encoded format
 // - Sign request based on website and nut (and alternative identity information)
 // - Ability to decrypt code with base password and use "quick-password"
-// - Index secret
 // - Recover identity using unlock key
 // - Store previous identities and be able to access them
 // - Handle special "Ask" functionality
@@ -162,13 +161,14 @@ impl SqrlClient {
         Ok(keys.sign(request.as_bytes()))
     }
 
-    pub fn get_index_secret(
+    pub fn get_secret_index_key(
         &self,
         password: &str,
         hostname: &str,
+        alternate_identity: Option<&str>,
         secret_index: &str,
     ) -> Result<String, SqrlError> {
-        let keys = self.get_keys(password, hostname, None)?;
+        let keys = self.get_keys(password, hostname, alternate_identity)?;
         let hash = en_hash(&keys.private_key);
         let mut hmac = Hmac::new(Sha256::new(), &hash);
         hmac.input(secret_index.as_bytes());

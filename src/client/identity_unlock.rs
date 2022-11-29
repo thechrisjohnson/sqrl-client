@@ -97,7 +97,7 @@ impl IdentityUnlockData {
             Ok(unencrypted_data)
         } else {
             return Err(SqrlError::new(
-                "Decryption failed. Check your password!".to_owned(),
+                "Decryption failed. Check your rescue code!".to_owned(),
             ));
         }
     }
