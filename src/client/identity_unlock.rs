@@ -2,7 +2,7 @@ use super::common::EMPTY_NONCE;
 use super::readable_vector::ReadableVector;
 use super::scrypt::{en_scrypt, mut_en_scrypt, Scrypt};
 use super::writable_datablock::WritableDataBlock;
-use super::DataType;
+use super::{AesVerificationData, DataType, IdentityKey};
 use crate::error::SqrlError;
 use byteorder::{LittleEndian, WriteBytesExt};
 use crypto::aead::{AeadDecryptor, AeadEncryptor};
@@ -23,7 +23,7 @@ const RESCUE_CODE_ALPHABET: [char; 10] = ['0', '1', '2', '3', '4', '5', '6', '7'
 pub(crate) struct IdentityUnlockData {
     scrypt_config: Scrypt,
     identity_unlock_key: [u8; 32],
-    verification_data: [u8; 16],
+    verification_data: AesVerificationData,
 }
 
 impl IdentityUnlockData {
@@ -42,8 +42,8 @@ impl IdentityUnlockData {
     pub(crate) fn update_unlock_key(
         &mut self,
         previous_rescue_code: &str,
-        identity_unlock_key: [u8; 32],
-    ) -> Result<(String, [u8; 32]), SqrlError> {
+        identity_unlock_key: IdentityKey,
+    ) -> Result<(String, IdentityKey), SqrlError> {
         let mut previous_identity_key = [0; 32];
         if self.identity_unlock_key != previous_identity_key {
             previous_identity_key = self.decrypt_identity_unlock_key(previous_rescue_code)?;
@@ -78,7 +78,7 @@ impl IdentityUnlockData {
     pub(crate) fn decrypt_identity_unlock_key(
         &self,
         rescue_code: &str,
-    ) -> Result<[u8; 32], SqrlError> {
+    ) -> Result<IdentityKey, SqrlError> {
         let mut unencrypted_data: [u8; 32] = [0; 32];
         let decoded_rescue_key = decode_rescue_code(rescue_code);
         let key = en_scrypt(&decoded_rescue_key.as_bytes(), &self.scrypt_config)?;

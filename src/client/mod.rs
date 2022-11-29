@@ -7,8 +7,8 @@ pub(crate) mod scrypt;
 mod writable_datablock;
 
 use self::{
-    common::xor, identity_unlock::IdentityUnlockData, previous_identity::PreviousIdentityData,
-    readable_vector::ReadableVector, identity_information::IdentityInformation,
+    common::xor, identity_information::IdentityInformation, identity_unlock::IdentityUnlockData,
+    previous_identity::PreviousIdentityData, readable_vector::ReadableVector,
     writable_datablock::WritableDataBlock,
 };
 use crate::error::SqrlError;
@@ -26,6 +26,10 @@ use num_traits::{FromPrimitive, ToPrimitive};
 use rand::{prelude::StdRng, RngCore, SeedableRng};
 use std::{collections::VecDeque, fs::File, io::Write};
 use url::{Host, Url};
+
+pub type PublicIdentity = [u8; 64];
+pub type AesVerificationData = [u8; 16];
+pub type IdentityKey = [u8; 32];
 
 // The configuration options for the SqrlClient
 pub const CONFIG_CHECK_FOR_UPDATES: u16 = 0x1;
@@ -238,12 +242,12 @@ impl SqrlClient {
         Ok(())
     }
 
-    pub fn get_identity_public_key(
+    pub fn get_public_identity(
         &self,
         password: &str,
         hostname: &str,
         alternate_identity: Option<&str>,
-    ) -> Result<[u8; 64], SqrlError> {
+    ) -> Result<PublicIdentity, SqrlError> {
         let keys = self.get_keys(password, hostname, alternate_identity)?;
         Ok(keys.public_key)
     }

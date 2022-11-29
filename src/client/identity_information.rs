@@ -2,7 +2,7 @@ use super::{
     readable_vector::ReadableVector,
     scrypt::{en_scrypt, mut_en_scrypt, Scrypt},
     writable_datablock::WritableDataBlock,
-    DataType,
+    AesVerificationData, DataType, IdentityKey,
 };
 use crate::error::SqrlError;
 use byteorder::{LittleEndian, WriteBytesExt};
@@ -22,9 +22,9 @@ pub(crate) struct IdentityInformation {
     hint_length: u8,
     pw_verify_sec: u8,
     idle_timeout_min: u16,
-    identity_master_key: [u8; 32],
-    identity_lock_key: [u8; 32],
-    verification_data: [u8; 16],
+    identity_master_key: IdentityKey,
+    identity_lock_key: IdentityKey,
+    verification_data: AesVerificationData,
 }
 
 impl IdentityInformation {
@@ -66,7 +66,7 @@ impl IdentityInformation {
     pub(crate) fn decrypt_identity_master_key(
         &self,
         password: &str,
-    ) -> Result<[u8; 32], SqrlError> {
+    ) -> Result<IdentityKey, SqrlError> {
         let mut user_identity_key = [0; 32];
         let decrypted_data = self.decrypt(password)?;
         for n in 0..32 {
@@ -76,7 +76,10 @@ impl IdentityInformation {
         Ok(user_identity_key)
     }
 
-    pub(crate) fn decrypt_identity_lock_key(&self, password: &str) -> Result<[u8; 32], SqrlError> {
+    pub(crate) fn decrypt_identity_lock_key(
+        &self,
+        password: &str,
+    ) -> Result<IdentityKey, SqrlError> {
         let mut user_unlock_key = [0; 32];
         let decrypted_data = self.decrypt(password)?;
         for n in 0..32 {
@@ -132,6 +135,12 @@ impl IdentityInformation {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn generate_server_unlock_key(&self, password: &str) -> Result<[u8; 32], SqrlError> {
+        let identity_lock = self.decrypt_identity_lock_key(password)?;
+        //TODO: Finish this
+        Ok(identity_lock)
     }
 
     fn decrypt(&self, password: &str) -> Result<[u8; 64], SqrlError> {
