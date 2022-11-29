@@ -1,14 +1,14 @@
 mod common;
+mod identity_information;
 mod identity_unlock;
 mod previous_identity;
 mod readable_vector;
 pub(crate) mod scrypt;
-mod user_configuration;
 mod writable_datablock;
 
 use self::{
     common::xor, identity_unlock::IdentityUnlockData, previous_identity::PreviousIdentityData,
-    readable_vector::ReadableVector, user_configuration::UserConfiguration,
+    readable_vector::ReadableVector, identity_information::IdentityInformation,
     writable_datablock::WritableDataBlock,
 };
 use crate::error::SqrlError;
@@ -73,7 +73,7 @@ where
 // - Handle special "Ask" functionality
 #[derive(Debug, PartialEq)]
 pub struct SqrlClient {
-    user_configuration: UserConfiguration,
+    user_configuration: IdentityInformation,
     identity_unlock: IdentityUnlockData,
     previous_identities: Option<PreviousIdentityData>,
 }
@@ -95,7 +95,7 @@ impl SqrlClient {
 
         // Encrypt the identity master key and identity lock key in
         let user_configuration =
-            UserConfiguration::new(password, identity_master_key, identity_lock_key)?;
+            IdentityInformation::new(password, identity_master_key, identity_lock_key)?;
 
         Ok((
             SqrlClient {
@@ -121,7 +121,7 @@ impl SqrlClient {
 
         // Encrypt the identity master key and identity lock key in
         let user_configuration =
-            UserConfiguration::new(new_password, identity_master_key, identity_lock_key)?;
+            IdentityInformation::new(new_password, identity_master_key, identity_lock_key)?;
 
         Ok(SqrlClient {
             user_configuration,
@@ -289,7 +289,7 @@ impl SqrlClient {
             }
         }
 
-        let mut user_configuration: Option<UserConfiguration> = None;
+        let mut user_configuration: Option<IdentityInformation> = None;
         let mut identity_unlock: Option<IdentityUnlockData> = None;
         let mut previous_identities: Option<PreviousIdentityData> = None;
 
@@ -314,7 +314,7 @@ impl SqrlClient {
                         ));
                     }
 
-                    user_configuration = Some(UserConfiguration::from_binary(&mut binary)?)
+                    user_configuration = Some(IdentityInformation::from_binary(&mut binary)?)
                 }
                 DataType::RescueCode => {
                     if identity_unlock != None {
@@ -454,6 +454,7 @@ impl DataType {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
 pub(crate) struct KeyPair {
     pub(crate) private_key: [u8; 32],
     pub(crate) public_key: [u8; 64],
@@ -661,7 +662,7 @@ mod tests {
     const TEST_FILE_PATH: &str = "test_resources/Spec-Vectors-Identity.sqrl";
     const TEST_FILE_PASSWORD: &str = "Zingo-Bingo-Slingo-Dingo";
     const TEST_FILE_RESCUE_CODE: &str = "1198-8748-7132-2838-8318-7570";
-    //const TEST_FILE_TEXTUAL_IDENTITY: &str = "KKcC 3BaX akxc Xwbf xki7\nk7mF GHhg jQes gzWd 6TrK\nvMsZ dBtB pZbC zsz8 cUWj\nDtS2 ZK2s ZdAQ 8Yx3 iDyt\nQuXt CkTC y6gc qG8n Xfj9\nbHDA 422";
+    const TEST_FILE_TEXTUAL_IDENTITY: &str = "KKcC 3BaX akxc Xwbf xki7\nk7mF GHhg jQes gzWd 6TrK\nvMsZ dBtB pZbC zsz8 cUWj\nDtS2 ZK2s ZdAQ 8Yx3 iDyt\nQuXt CkTC y6gc qG8n Xfj9\nbHDA 422";
     const TEST_URL: &str =
         "sqrl://sqrl.grc.com/cli.sqrl?nut=fXkb4MBToCm7&can=aHR0cHM6Ly9zcXJsLmdyYy5jb20vZGVtbw";
 
@@ -691,7 +692,7 @@ mod tests {
             .unwrap();
     }
 
-    /*#[test]
+    #[test]
     fn try_textual_identity_loading() {
         let mut client = SqrlClient::from_textual_identity_format(
             TEST_FILE_TEXTUAL_IDENTITY,
@@ -700,7 +701,7 @@ mod tests {
         )
         .unwrap();
         client.verify_password(TEST_FILE_PASSWORD).unwrap();
-    }*/
+    }
 
     #[test]
     fn sign_reqeust() {
@@ -708,5 +709,21 @@ mod tests {
         client
             .sign_request(TEST_FILE_PASSWORD, TEST_URL, None, "")
             .unwrap();
+    }
+
+    #[test]
+    fn decode_encode_textual_identity() {
+        let client = SqrlClient::from_textual_identity_format(
+            TEST_FILE_TEXTUAL_IDENTITY,
+            TEST_FILE_RESCUE_CODE,
+            "password",
+        )
+        .unwrap();
+
+        let output = client.to_textual_identity_format().unwrap();
+        assert_eq!(
+            output, TEST_FILE_TEXTUAL_IDENTITY,
+            "Textual identity formats do not match!"
+        );
     }
 }

@@ -15,7 +15,7 @@ use rand::{prelude::StdRng, RngCore, SeedableRng};
 use std::{collections::VecDeque, convert::TryInto, io::Write};
 
 #[derive(Debug, PartialEq)]
-pub(crate) struct UserConfiguration {
+pub(crate) struct IdentityInformation {
     aes_gcm_iv: [u8; 12],
     scrypt_config: Scrypt,
     option_flags: u16,
@@ -27,13 +27,13 @@ pub(crate) struct UserConfiguration {
     verification_data: [u8; 16],
 }
 
-impl UserConfiguration {
+impl IdentityInformation {
     pub fn new(
         password: &str,
         identity_master_key: [u8; 32],
         identity_lock_key: [u8; 32],
     ) -> Result<Self, SqrlError> {
-        let mut config = UserConfiguration {
+        let mut config = IdentityInformation {
             aes_gcm_iv: [0; 12],
             scrypt_config: Scrypt::new(),
             option_flags: 0,
@@ -165,7 +165,7 @@ impl UserConfiguration {
     }
 }
 
-impl WritableDataBlock for UserConfiguration {
+impl WritableDataBlock for IdentityInformation {
     fn get_type(&self) -> DataType {
         DataType::UserAccess
     }
@@ -192,7 +192,7 @@ impl WritableDataBlock for UserConfiguration {
         let identity_lock_key = binary.next_sub_array(32)?.as_slice().try_into()?;
         let verification_data = binary.next_sub_array(16)?.as_slice().try_into()?;
 
-        Ok(UserConfiguration {
+        Ok(IdentityInformation {
             aes_gcm_iv: aes_gcm_iv,
             scrypt_config: scrypt_config,
             option_flags: option_flags,
