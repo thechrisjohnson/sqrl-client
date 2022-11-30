@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{fmt, string::FromUtf8Error};
 
 pub struct SqrlError {
     error_message: String,
@@ -28,6 +28,18 @@ impl From<std::array::TryFromSliceError> for SqrlError {
 
 impl From<url::ParseError> for SqrlError {
     fn from(error: url::ParseError) -> Self {
+        SqrlError::new(error.to_string())
+    }
+}
+
+impl From<base64::DecodeError> for SqrlError {
+    fn from(error: base64::DecodeError) -> Self {
+        SqrlError::new(error.to_string())
+    }
+}
+
+impl From<FromUtf8Error> for SqrlError {
+    fn from(error: FromUtf8Error) -> Self {
         SqrlError::new(error.to_string())
     }
 }
