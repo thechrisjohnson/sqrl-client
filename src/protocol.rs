@@ -124,7 +124,7 @@ impl ClientParameters {
         let ver_string = get_or_error(&map, "ver", "Invalid client request: No version number")?;
         let ver = match ver_string.parse::<u64>() {
             Ok(x) => x,
-            Err(t) => {
+            Err(_) => {
                 return Err(SqrlError::new(format!(
                     "Invalid client request: Unable to parse client request protocol version: {}",
                     ver_string
