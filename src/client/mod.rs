@@ -253,8 +253,14 @@ impl SqrlClient {
     }
 
     // TODO
-    pub fn  generate_server_unlock_key(&self, password: &str, _hostname: &str, _alternate_identity: Option<&str>) -> Result<(), SqrlError> {
-        self.user_configuration.generate_server_unlock_key(password)?;
+    pub fn generate_server_unlock_key(
+        &self,
+        password: &str,
+        _hostname: &str,
+        _alternate_identity: Option<&str>,
+    ) -> Result<(), SqrlError> {
+        self.user_configuration
+            .generate_server_unlock_key(password)?;
         Ok(())
     }
 
