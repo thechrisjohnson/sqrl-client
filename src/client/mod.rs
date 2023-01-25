@@ -688,8 +688,7 @@ mod tests {
     const TEST_FILE_PASSWORD: &str = "Zingo-Bingo-Slingo-Dingo";
     const TEST_FILE_RESCUE_CODE: &str = "1198-8748-7132-2838-8318-7570";
     const TEST_FILE_TEXTUAL_IDENTITY: &str = "KKcC 3BaX akxc Xwbf xki7\nk7mF GHhg jQes gzWd 6TrK\nvMsZ dBtB pZbC zsz8 cUWj\nDtS2 ZK2s ZdAQ 8Yx3 iDyt\nQuXt CkTC y6gc qG8n Xfj9\nbHDA 422";
-    const TEST_URL: &str =
-        "sqrl://sqrl.grc.com/cli.sqrl?nut=fXkb4MBToCm7&can=aHR0cHM6Ly9zcXJsLmdyYy5jb20vZGVtbw";
+    //const TEST_URL: &str = "sqrl://sqrl.grc.com/cli.sqrl?nut=fXkb4MBToCm7&can=aHR0cHM6Ly9zcXJsLmdyYy5jb20vZGVtbw";
 
     #[test]
     fn load_test_data() {
