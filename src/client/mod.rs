@@ -436,17 +436,20 @@ impl SqrlStorage for SqrlClient {
     ) -> Result<Self, SqrlError> {
         validate_textual_identity(input)?;
         let mut data = decode_textual_identity(input)?;
+        if data.next_u16()? != 73 || DataType::from_binary(&mut data)? != DataType::RescueCode {
+            return Err(SqrlError::new("Invalid textual identity.".to_owned()));
+        }
+
         let identity_unlock = IdentityUnlockData::from_binary(&mut data)?;
         SqrlClient::from_identity_unlock(identity_unlock, rescue_code, new_password)
     }
 
     fn to_textual_identity_format(&self) -> Result<String, SqrlError> {
-        // TODO
         encode_textual_identity(self)
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub(crate) enum DataType {
     UserAccess = 1,
     RescueCode = 2,
@@ -548,7 +551,7 @@ fn encode_textual_identity(client: &SqrlClient) -> Result<String, SqrlError> {
     let mut bytes: Vec<u8> = Vec::new();
     let mut hasher = Sha256::new();
     let mut output: [u8; 32] = [0; 32];
-    let mut line_number: u8 = 1;
+    let mut line_number: u8 = 0;
 
     // Get the binary representation of the identity unlock key
     let mut data = Vec::new();
@@ -558,11 +561,11 @@ fn encode_textual_identity(client: &SqrlClient) -> Result<String, SqrlError> {
     // calculate the textual identity
     let mut num = BigUint::from_bytes_le(&data);
     let encoded_size = calculate_encoded_text_size(&data);
-    for character in 1..encoded_size {
+    for character in 0..encoded_size {
         if let Some(index) = (&num % 56u8).to_usize() {
             num /= 56u8;
-            bytes.push(index as u8);
             let c = TEXT_IDENTITY_ALPHABET[index];
+            bytes.push(c as u8);
             textual_identity.push(c);
 
             // If we're at a multiple of 4, add a space
@@ -608,8 +611,14 @@ fn calculate_encoded_text_size(data: &Vec<u8>) -> u8 {
     let zero = BigUint::from_u8(0).unwrap();
     let mut max_int = BigUint::from_bytes_le(&max);
     let mut count = 0u8;
+    let divisor = BigUint::from_u8(56).unwrap();
 
     while max_int > zero {
+        // This means we're going to have a remainder that won't show up
+        if max_int < divisor {
+            count += 1;
+        }
+
         max_int /= 56u8;
         count += 1;
     }

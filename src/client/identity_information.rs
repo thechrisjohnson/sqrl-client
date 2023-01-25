@@ -184,7 +184,7 @@ impl WritableDataBlock for IdentityInformation {
     }
 
     fn from_binary(binary: &mut VecDeque<u8>) -> Result<Self, SqrlError> {
-        // TODO: Do I need to worry about plaintext length?
+        // Skip over the plaintext length
         binary.skip(2);
 
         let aes_gcm_iv = binary.next_sub_array(12)?.as_slice().try_into()?;
