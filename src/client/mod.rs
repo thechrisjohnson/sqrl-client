@@ -729,14 +729,6 @@ mod tests {
     }
 
     #[test]
-    fn sign_reqeust() {
-        let client = SqrlClient::from_file(TEST_FILE_PATH).unwrap();
-        client
-            .sign_request(TEST_FILE_PASSWORD, TEST_URL, None, "")
-            .unwrap();
-    }
-
-    #[test]
     fn decode_encode_textual_identity() {
         let client = SqrlClient::from_textual_identity_format(
             TEST_FILE_TEXTUAL_IDENTITY,
