@@ -742,4 +742,14 @@ mod tests {
             "Textual identity formats do not match!"
         );
     }
+
+    #[test]
+    fn encode_textual_identity_from_file() {
+        let client = SqrlClient::from_file(TEST_FILE_PATH).unwrap();
+        let output = client.to_textual_identity_format().unwrap();
+        assert_eq!(
+            output, TEST_FILE_TEXTUAL_IDENTITY,
+            "Textual identity format not correct!"
+        );
+    }
 }
