@@ -51,9 +51,10 @@ impl IdentityUnlockData {
 
         let mut encrypted_data: [u8; 32] = [0; 32];
         let rescue_code = generate_rescue_code();
+        let decoded_rescue_code = decode_rescue_code(&rescue_code);
 
         let key = mut_en_scrypt(
-            &rescue_code.as_bytes(),
+            &decoded_rescue_code.as_bytes(),
             &mut self.scrypt_config,
             RESCUE_CODE_SCRYPT_TIME,
         );
@@ -173,4 +174,26 @@ fn decode_rescue_code(rescue_code: &str) -> String {
     }
 
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn generate_and_unlock_with_rescue_code() {
+        let mut random = StdRng::from_entropy();
+        let mut identity_unlock_key: [u8; 32] = [0; 32];
+        random.fill_bytes(&mut identity_unlock_key);
+
+        let (unlock_data, rescue_code) = IdentityUnlockData::new(identity_unlock_key).unwrap();
+        let decrypted_key = unlock_data
+            .decrypt_identity_unlock_key(&rescue_code)
+            .unwrap();
+
+        assert_eq!(
+            decrypted_key, identity_unlock_key,
+            "Identity unlock keys do not match!"
+        );
+    }
 }
