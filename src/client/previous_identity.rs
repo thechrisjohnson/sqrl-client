@@ -1,5 +1,7 @@
 use super::common::EMPTY_NONCE;
-use super::{readable_vector::ReadableVector, writable_datablock::WritableDataBlock, DataType};
+use super::{
+    readable_vector::ReadableVector, writable_datablock::WritableDataBlock, DataType, IdentityKey,
+};
 use crate::error::SqrlError;
 use byteorder::{LittleEndian, WriteBytesExt};
 use crypto::aead::{AeadDecryptor, AeadEncryptor};
@@ -13,7 +15,7 @@ const MAX_NUM_KEYS: u16 = 4;
 #[derive(Debug, PartialEq)]
 pub(crate) struct PreviousIdentityData {
     edition: u16,
-    pub(crate) previous_identity_unlock_keys: VecDeque<[u8; 32]>,
+    pub(crate) previous_identity_unlock_keys: VecDeque<IdentityKey>,
     pub(crate) verification_data: [u8; 16],
 }
 
@@ -29,10 +31,10 @@ impl PreviousIdentityData {
     pub(crate) fn add_previous_identity(
         &mut self,
         identity_master_key: &[u8],
-        key: [u8; 32],
+        key: IdentityKey,
     ) -> Result<(), SqrlError> {
         // First decrypt the existing data
-        let mut unencrypted_keys: VecDeque<[u8; 32]>;
+        let mut unencrypted_keys: VecDeque<IdentityKey>;
         if self.edition > 0 {
             unencrypted_keys = self.decrypt_previous_identities(identity_master_key)?;
         } else {
@@ -52,7 +54,7 @@ impl PreviousIdentityData {
         &mut self,
         current_identity_master_key: &[u8],
         new_identity_master_key: &[u8],
-        current_identity_unlock_key: Option<[u8; 32]>,
+        current_identity_unlock_key: Option<IdentityKey>,
     ) -> Result<(), SqrlError> {
         let mut unencrypted_keys = self.decrypt_previous_identities(current_identity_master_key)?;
 
@@ -72,7 +74,7 @@ impl PreviousIdentityData {
     fn decrypt_previous_identities(
         &self,
         identity_master_key: &[u8],
-    ) -> Result<VecDeque<[u8; 32]>, SqrlError> {
+    ) -> Result<VecDeque<IdentityKey>, SqrlError> {
         let mut encrypted_data = Vec::new();
         for key in self.previous_identity_unlock_keys.iter() {
             for byte in key {
@@ -96,7 +98,7 @@ impl PreviousIdentityData {
             let mut result = VecDeque::new();
             let mut iter = unencrypted_data.into_iter();
             for _ in 0..self.edition {
-                let mut key: [u8; 32] = [0; 32];
+                let mut key: IdentityKey  = [0; 32];
                 for i in 0..32 {
                     key[i] = iter.next().unwrap();
                 }
@@ -113,7 +115,7 @@ impl PreviousIdentityData {
 
     fn encrypt_previous_identities(
         &mut self,
-        unencrypted_keys: VecDeque<[u8; 32]>,
+        unencrypted_keys: VecDeque<IdentityKey>,
         identity_master_key: &[u8],
     ) -> Result<(), SqrlError> {
         let num_keys: u16;
@@ -139,7 +141,7 @@ impl PreviousIdentityData {
         let mut result = VecDeque::new();
         let mut iter = encrypted_data.into_iter();
         for _ in 0..self.edition {
-            let mut key: [u8; 32] = [0; 32];
+            let mut key: IdentityKey = [0; 32];
             for i in 0..32 {
                 key[i] = iter.next().unwrap();
             }
