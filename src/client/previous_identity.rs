@@ -4,6 +4,7 @@ use super::{
 };
 use crate::error::SqrlError;
 use byteorder::{LittleEndian, WriteBytesExt};
+use client::AesVerificationData;
 use crypto::aead::{AeadDecryptor, AeadEncryptor};
 use crypto::aes::KeySize;
 use crypto::aes_gcm::AesGcm;
@@ -16,7 +17,7 @@ const MAX_NUM_KEYS: u16 = 4;
 pub(crate) struct PreviousIdentityData {
     edition: u16,
     pub(crate) previous_identity_unlock_keys: VecDeque<IdentityKey>,
-    pub(crate) verification_data: [u8; 16],
+    pub(crate) verification_data: AesVerificationData,
 }
 
 impl PreviousIdentityData {

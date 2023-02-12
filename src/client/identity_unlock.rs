@@ -27,7 +27,7 @@ pub(crate) struct IdentityUnlockData {
 }
 
 impl IdentityUnlockData {
-    pub(crate) fn new(identity_unlock_key: [u8; 32]) -> Result<(Self, String), SqrlError> {
+    pub(crate) fn new(identity_unlock_key: IdentityKey) -> Result<(Self, String), SqrlError> {
         let mut identity_unlock = IdentityUnlockData {
             scrypt_config: Scrypt::new(),
             identity_unlock_key: [0; 32],
@@ -183,7 +183,7 @@ mod tests {
     #[test]
     fn generate_and_unlock_with_rescue_code() {
         let mut random = StdRng::from_entropy();
-        let mut identity_unlock_key: [u8; 32] = [0; 32];
+        let mut identity_unlock_key: IdentityKey = [0; 32];
         random.fill_bytes(&mut identity_unlock_key);
 
         let (unlock_data, rescue_code) = IdentityUnlockData::new(identity_unlock_key).unwrap();
