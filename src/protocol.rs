@@ -1,4 +1,5 @@
 use crate::error::SqrlError;
+use base64::{prelude::BASE64_URL_SAFE_NO_PAD, Engine};
 use std::{collections::HashMap, fmt};
 
 // The current version of the sqrl protocol
@@ -107,10 +108,7 @@ impl ClientParameters {
     }
 
     pub fn from_base64(base64_string: &str) -> Result<Self, SqrlError> {
-        let query_string = String::from_utf8(base64::decode_config(
-            base64_string,
-            base64::URL_SAFE_NO_PAD,
-        )?)?;
+        let query_string = String::from_utf8(BASE64_URL_SAFE_NO_PAD.decode(base64_string)?)?;
 
         // Client parameters use a newline
         let mut map = HashMap::<String, String>::new();
@@ -203,7 +201,7 @@ impl ClientParameters {
             result = result + &format!("\nvuk={}", vuk);
         }
 
-        base64::encode_config(result, base64::URL_SAFE_NO_PAD)
+        BASE64_URL_SAFE_NO_PAD.encode(result)
     }
 }
 

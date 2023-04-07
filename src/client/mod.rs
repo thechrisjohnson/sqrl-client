@@ -12,6 +12,7 @@ use self::{
     writable_datablock::WritableDataBlock,
 };
 use crate::error::SqrlError;
+use base64::{prelude::BASE64_URL_SAFE, Engine};
 use byteorder::{LittleEndian, WriteBytesExt};
 use crypto::{
     curve25519::ge_scalarmult_base,
@@ -177,10 +178,7 @@ impl SqrlClient {
         let mut hmac = Hmac::new(Sha256::new(), &hash);
         hmac.input(secret_index.as_bytes());
 
-        Ok(base64::encode_config(
-            hmac.result().code(),
-            base64::URL_SAFE,
-        ))
+        Ok(BASE64_URL_SAFE.encode(hmac.result().code()))
     }
 
     pub fn rekey_identity(
@@ -409,7 +407,7 @@ impl SqrlStorage for SqrlClient {
         }
 
         // Decode the rest using base64
-        let data = match base64::decode_config(&input[8..], base64::URL_SAFE) {
+        let data = match BASE64_URL_SAFE.decode(&input[8..]) {
             Ok(data) => data,
             Err(_) => return Err(SqrlError::new("Invalid binary data".to_owned())),
         };
@@ -426,7 +424,7 @@ impl SqrlStorage for SqrlClient {
 
     fn to_base64(&self) -> Result<String, SqrlError> {
         let data = self.to_binary()?;
-        Ok(base64::encode_config(data, base64::URL_SAFE))
+        Ok(BASE64_URL_SAFE.encode(data))
     }
 
     fn from_textual_identity_format(
