@@ -40,7 +40,7 @@ impl Scrypt {
     }
 
     pub(crate) fn to_binary(&self, output: &mut Vec<u8>) -> Result<(), SqrlError> {
-        output.write(&self.random_salt)?;
+        output.write_all(&self.random_salt)?;
         output.push(self.log_n_factor);
         let iteration_factor = match self.iteration_factor {
             Some(x) => x,

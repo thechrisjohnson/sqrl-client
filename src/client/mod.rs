@@ -236,7 +236,7 @@ impl SqrlClient {
     pub fn lock_identity(&self, password: &str) -> Result<(), SqrlError> {
         let _ = self
             .user_configuration
-            .decrypt_identity_lock_key(&password)?;
+            .decrypt_identity_lock_key(password)?;
         Ok(())
     }
 
@@ -308,7 +308,7 @@ impl SqrlClient {
         let mut previous_identities: Option<PreviousIdentityData> = None;
 
         loop {
-            if binary.len() == 0 {
+            if binary.is_empty() {
                 break;
             }
 
@@ -322,7 +322,7 @@ impl SqrlClient {
             let block_type = DataType::from_binary(&mut binary)?;
             match block_type {
                 DataType::UserAccess => {
-                    if user_configuration != None {
+                    if user_configuration.is_some() {
                         return Err(SqrlError::new(
                             "Duplicate password information found!".to_owned(),
                         ));
@@ -331,7 +331,7 @@ impl SqrlClient {
                     user_configuration = Some(IdentityInformation::from_binary(&mut binary)?)
                 }
                 DataType::RescueCode => {
-                    if identity_unlock != None {
+                    if identity_unlock.is_some() {
                         return Err(SqrlError::new(
                             "Duplicate rescue code data found!".to_owned(),
                         ));
@@ -340,7 +340,7 @@ impl SqrlClient {
                     identity_unlock = Some(IdentityUnlockData::from_binary(&mut binary)?)
                 }
                 DataType::PreviousIdentity => {
-                    if previous_identities != None {
+                    if previous_identities.is_some() {
                         return Err(SqrlError::new(
                             "Duplicate previous identity data found!".to_owned(),
                         ));
@@ -361,7 +361,7 @@ impl SqrlClient {
         Ok(SqrlClient {
             user_configuration: user_access_check,
             identity_unlock: rescue_code_check,
-            previous_identities: previous_identities,
+            previous_identities,
         })
     }
 
@@ -375,9 +375,8 @@ impl SqrlClient {
         // Make sure to write out all the sub data
         self.user_configuration.to_binary(&mut result)?;
         self.identity_unlock.to_binary(&mut result)?;
-        match &self.previous_identities {
-            Some(previous) => previous.to_binary(&mut result)?,
-            _ => (),
+        if let Some(previous) = &self.previous_identities {
+            previous.to_binary(&mut result)?;
         };
 
         Ok(result)
@@ -392,7 +391,7 @@ impl SqrlStorage for SqrlClient {
     fn to_file(&self, file_path: &str) -> Result<(), SqrlError> {
         let mut file = File::create(file_path)?;
         let data = self.to_binary()?;
-        file.write(&data)?;
+        file.write_all(&data)?;
 
         Ok(())
     }
@@ -419,7 +418,7 @@ impl SqrlStorage for SqrlClient {
             binary.push_front(b);
         }
 
-        Ok(SqrlClient::from_binary(binary)?)
+        SqrlClient::from_binary(binary)
     }
 
     fn to_base64(&self) -> Result<String, SqrlError> {
@@ -668,11 +667,8 @@ fn find_char_in_array(array: &[char], character: char) -> Option<usize> {
 
 fn convert_vec(mut input: Vec<u8>) -> VecDeque<u8> {
     let mut new_vec = VecDeque::new();
-    loop {
-        match input.pop() {
-            Some(x) => new_vec.push_front(x),
-            None => break,
-        };
+    while let Some(x) = input.pop() {
+        new_vec.push_front(x);
     }
 
     new_vec

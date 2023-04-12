@@ -54,7 +54,7 @@ impl IdentityUnlockData {
         let decoded_rescue_code = decode_rescue_code(&rescue_code);
 
         let key = mut_en_scrypt(
-            &decoded_rescue_code.as_bytes(),
+            decoded_rescue_code.as_bytes(),
             &mut self.scrypt_config,
             RESCUE_CODE_SCRYPT_TIME,
         );
@@ -82,7 +82,7 @@ impl IdentityUnlockData {
     ) -> Result<IdentityKey, SqrlError> {
         let mut unencrypted_data: [u8; 32] = [0; 32];
         let decoded_rescue_key = decode_rescue_code(rescue_code);
-        let key = en_scrypt(&decoded_rescue_key.as_bytes(), &self.scrypt_config)?;
+        let key = en_scrypt(decoded_rescue_key.as_bytes(), &self.scrypt_config)?;
 
         let mut aes = AesGcm::new(
             KeySize::KeySize256,
@@ -97,9 +97,9 @@ impl IdentityUnlockData {
         ) {
             Ok(unencrypted_data)
         } else {
-            return Err(SqrlError::new(
+            Err(SqrlError::new(
                 "Decryption failed. Check your rescue code!".to_owned(),
-            ));
+            ))
         }
     }
 
@@ -131,8 +131,8 @@ impl WritableDataBlock for IdentityUnlockData {
 
     fn to_binary_inner(&self, output: &mut Vec<u8>) -> Result<(), SqrlError> {
         self.scrypt_config.to_binary(output)?;
-        output.write(&self.identity_unlock_key)?;
-        output.write(&self.verification_data)?;
+        output.write_all(&self.identity_unlock_key)?;
+        output.write_all(&self.verification_data)?;
         Ok(())
     }
 }

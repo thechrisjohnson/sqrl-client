@@ -40,7 +40,7 @@ impl IdentityInformation {
             hint_length: 0,
             pw_verify_sec: 5,
             idle_timeout_min: 0,
-            identity_master_key: identity_master_key,
+            identity_master_key,
             identity_lock_key: [0; 32],
             verification_data: [0; 16],
         };
@@ -54,7 +54,7 @@ impl IdentityInformation {
         result.write_u16::<LittleEndian>(self.len())?;
         self.get_type().to_binary(&mut result)?;
         result.write_u16::<LittleEndian>(45)?;
-        result.write(&self.aes_gcm_iv)?;
+        result.write_all(&self.aes_gcm_iv)?;
         self.scrypt_config.to_binary(&mut result)?;
         result.write_u16::<LittleEndian>(self.option_flags)?;
         result.push(self.hint_length);
@@ -69,9 +69,7 @@ impl IdentityInformation {
     ) -> Result<IdentityKey, SqrlError> {
         let mut user_identity_key = [0; 32];
         let decrypted_data = self.decrypt(password)?;
-        for n in 0..32 {
-            user_identity_key[n] = decrypted_data[n];
-        }
+        user_identity_key[..32].copy_from_slice(&decrypted_data[..32]);
 
         Ok(user_identity_key)
     }
@@ -82,9 +80,7 @@ impl IdentityInformation {
     ) -> Result<IdentityKey, SqrlError> {
         let mut user_unlock_key = [0; 32];
         let decrypted_data = self.decrypt(password)?;
-        for n in 0..32 {
-            user_unlock_key[n] = decrypted_data[32 + n];
-        }
+        user_unlock_key[..32].copy_from_slice(&decrypted_data[32..64]);
 
         Ok(user_unlock_key)
     }
@@ -103,8 +99,8 @@ impl IdentityInformation {
         let mut random = StdRng::from_entropy();
         let mut encrypted_data: [u8; 64] = [0; 64];
         let mut to_encrypt = Vec::new();
-        to_encrypt.write(&identity_master_key)?;
-        to_encrypt.write(&identity_lock_key)?;
+        to_encrypt.write_all(&identity_master_key)?;
+        to_encrypt.write_all(&identity_lock_key)?;
 
         let key = mut_en_scrypt(
             password.as_bytes(),
@@ -167,9 +163,9 @@ impl IdentityInformation {
         ) {
             Ok(unencrypted_data)
         } else {
-            return Err(SqrlError::new(
+            Err(SqrlError::new(
                 "Decryption failed. Check your password!".to_owned(),
-            ));
+            ))
         }
     }
 }
@@ -202,29 +198,29 @@ impl WritableDataBlock for IdentityInformation {
         let verification_data = binary.next_sub_array(16)?.as_slice().try_into()?;
 
         Ok(IdentityInformation {
-            aes_gcm_iv: aes_gcm_iv,
-            scrypt_config: scrypt_config,
-            option_flags: option_flags,
-            hint_length: hint_length,
-            pw_verify_sec: pw_verify_sec,
-            idle_timeout_min: idle_timeout_min,
-            identity_master_key: identity_master_key,
-            identity_lock_key: identity_lock_key,
-            verification_data: verification_data,
+            aes_gcm_iv,
+            scrypt_config,
+            option_flags,
+            hint_length,
+            pw_verify_sec,
+            idle_timeout_min,
+            identity_master_key,
+            identity_lock_key,
+            verification_data
         })
     }
 
     fn to_binary_inner(&self, output: &mut Vec<u8>) -> Result<(), SqrlError> {
         output.write_u16::<LittleEndian>(45)?;
-        output.write(&self.aes_gcm_iv)?;
+        output.write_all(&self.aes_gcm_iv)?;
         self.scrypt_config.to_binary(output)?;
         output.write_u16::<LittleEndian>(self.option_flags)?;
         output.push(self.hint_length);
         output.push(self.pw_verify_sec);
         output.write_u16::<LittleEndian>(self.idle_timeout_min)?;
-        output.write(&self.identity_master_key)?;
-        output.write(&self.identity_lock_key)?;
-        output.write(&self.verification_data)?;
+        output.write_all(&self.identity_master_key)?;
+        output.write_all(&self.identity_lock_key)?;
+        output.write_all(&self.verification_data)?;
 
         Ok(())
     }

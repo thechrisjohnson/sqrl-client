@@ -47,8 +47,8 @@ impl ClientRequest {
         let server = get_or_error(&map, "server", "Invalid client request: No server value")?;
         let ids = get_or_error(&map, "ids", "Invalid client request: No ids value")?;
 
-        let pids = convert_to_option_string(map.get("pids"));
-        let urs = convert_to_option_string(map.get("urs"));
+        let pids = map.get("pids").map(|x| x.to_string());
+        let urs = map.get("urs").map(|x| x.to_string());
 
         Ok(ClientRequest {
             client_params,
@@ -153,12 +153,12 @@ impl ClientParameters {
             None => None,
         };
 
-        let opt = convert_to_option_string(map.get("opt"));
-        let pidk = convert_to_option_string(map.get("pidk"));
-        let ins = convert_to_option_string(map.get("ins"));
-        let pins = convert_to_option_string(map.get("pins"));
-        let suk = convert_to_option_string(map.get("suk"));
-        let vuk = convert_to_option_string(map.get("vuk"));
+        let opt = map.get("opt").map(|x| x.to_string());
+        let pidk = map.get("pidk").map(|x| x.to_string());
+        let ins = map.get("ins").map(|x| x.to_string());
+        let pins = map.get("pins").map(|x| x.to_string());
+        let suk = map.get("suk").map(|x| x.to_string());
+        let vuk = map.get("vuk").map(|x| x.to_string());
 
         Ok(ClientParameters {
             ver,
@@ -176,7 +176,7 @@ impl ClientParameters {
 
     pub fn encode(&self) -> String {
         let mut result = format!("ver={}", self.ver);
-        result = result + &format!("\ncmd={}", self.cmd.to_string());
+        result = result + &format!("\ncmd={}", self.cmd);
         result = result + &format!("\nidk={}", self.idk);
 
         if let Some(opt) = &self.opt {
@@ -313,11 +313,11 @@ impl ServerResponse {
         let qry = get_or_error(&data, "qry", "No status code (tif) in server response")?;
 
         // The rest of these are optional
-        let url = convert_to_option_string(data.get("url"));
-        let can = convert_to_option_string(data.get("can"));
-        let sin = convert_to_option_string(data.get("sin"));
-        let suk = convert_to_option_string(data.get("suk"));
-        let ask = convert_to_option_string(data.get("ask"));
+        let url = data.get("url").map(|x| x.to_string());
+        let can = data.get("can").map(|x| x.to_string());
+        let sin = data.get("sin").map(|x| x.to_string());
+        let suk = data.get("suk").map(|x| x.to_string());
+        let ask = data.get("ask").map(|x| x.to_string());
 
         Ok(ServerResponse {
             ver,
@@ -339,8 +339,8 @@ fn get_or_error(
     error_message: &str,
 ) -> Result<String, SqrlError> {
     match map.get(key) {
-        Some(x) => return Ok(x.to_owned()),
-        None => return Err(SqrlError::new(error_message.to_owned())),
+        Some(x) => Ok(x.to_owned()),
+        None => Err(SqrlError::new(error_message.to_owned())),
     }
 }
 
@@ -352,13 +352,6 @@ fn parse_query_data(query: &str) -> Result<HashMap<String, String>, SqrlError> {
         }
     }
     Ok(map)
-}
-
-fn convert_to_option_string(current: Option<&String>) -> Option<String> {
-    match current {
-        Some(x) => Some(x.to_string()),
-        None => None,
-    }
 }
 
 #[cfg(test)]

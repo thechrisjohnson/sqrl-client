@@ -59,14 +59,11 @@ impl PreviousIdentityData {
     ) -> Result<(), SqrlError> {
         let mut unencrypted_keys = self.decrypt_previous_identities(current_identity_master_key)?;
 
-        match current_identity_unlock_key {
-            Some(key) => {
-                if unencrypted_keys.len() >= MAX_NUM_KEYS.into() {
-                    unencrypted_keys.pop_back();
-                }
-                unencrypted_keys.push_front(key);
+        if let Some(key) = current_identity_unlock_key {
+            if unencrypted_keys.len() >= MAX_NUM_KEYS.into() {
+                unencrypted_keys.pop_back();
             }
-            _ => (),
+            unencrypted_keys.push_front(key);
         }
 
         self.encrypt_previous_identities(unencrypted_keys, new_identity_master_key)
@@ -106,11 +103,11 @@ impl PreviousIdentityData {
                 result.push_back(key);
             }
 
-            return Ok(result);
+            Ok(result)
         } else {
-            return Err(SqrlError::new(
+            Err(SqrlError::new(
                 "Decryption failed. Check the identity master key!".to_owned(),
-            ));
+            ))
         }
     }
 
@@ -119,16 +116,15 @@ impl PreviousIdentityData {
         unencrypted_keys: VecDeque<IdentityKey>,
         identity_master_key: &[u8],
     ) -> Result<(), SqrlError> {
-        let num_keys: u16;
-        match unencrypted_keys.len().try_into() {
-            Ok(p) => num_keys = p,
+        let num_keys: u16 = match unencrypted_keys.len().try_into() {
+            Ok(p) => p,
             Err(_) => return Err(SqrlError::new("Too many previous keys".to_owned())),
-        }
+        };
 
         let mut encrypted_data = vec![0; (num_keys * 32).into()];
         let mut aes = AesGcm::new(
             KeySize::KeySize256,
-            &identity_master_key,
+            identity_master_key,
             &EMPTY_NONCE,
             self.aad()?.as_slice(),
         );
@@ -189,9 +185,9 @@ impl WritableDataBlock for PreviousIdentityData {
         let verification_data = binary.next_sub_array(16)?.as_slice().try_into()?;
 
         Ok(PreviousIdentityData {
-            edition: edition,
-            previous_identity_unlock_keys: previous_identity_unlock_keys,
-            verification_data: verification_data,
+            edition,
+            previous_identity_unlock_keys,
+            verification_data,
         })
     }
 
@@ -202,9 +198,9 @@ impl WritableDataBlock for PreviousIdentityData {
 
         output.write_u16::<LittleEndian>(self.edition)?;
         for key in &self.previous_identity_unlock_keys {
-            output.write(key)?;
+            output.write_all(key)?;
         }
-        output.write(&self.verification_data)?;
+        output.write_all(&self.verification_data)?;
 
         Ok(())
     }
