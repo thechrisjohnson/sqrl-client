@@ -97,8 +97,8 @@ impl PreviousIdentityData {
             let mut iter = unencrypted_data.into_iter();
             for _ in 0..self.edition {
                 let mut key: IdentityKey = [0; 32];
-                for i in 0..32 {
-                    key[i] = iter.next().unwrap();
+                for i in &mut key {
+                    *i = iter.next().unwrap();
                 }
                 result.push_back(key);
             }
@@ -139,8 +139,8 @@ impl PreviousIdentityData {
         let mut iter = encrypted_data.into_iter();
         for _ in 0..self.edition {
             let mut key: IdentityKey = [0; 32];
-            for i in 0..32 {
-                key[i] = iter.next().unwrap();
+            for i in &mut key {
+                *i = iter.next().unwrap();
             }
             result.push_back(key);
         }

@@ -122,11 +122,11 @@ impl IdentityInformation {
             &mut self.verification_data,
         );
 
-        for i in 0..64 {
+        for (i, item) in encrypted_data.iter().enumerate() {
             if i < 32 {
-                self.identity_master_key[i] = encrypted_data[i];
+                self.identity_master_key[i] = *item;
             } else {
-                self.identity_lock_key[i - 32] = encrypted_data[i];
+                self.identity_lock_key[i - 32] = *item;
             }
         }
 
@@ -141,11 +141,11 @@ impl IdentityInformation {
 
     fn decrypt(&self, password: &str) -> Result<[u8; 64], SqrlError> {
         let mut encrypted_data: [u8; 64] = [0; 64];
-        for i in 0..64 {
+        for (i, item) in encrypted_data.iter_mut().enumerate() {
             if i < 32 {
-                encrypted_data[i] = self.identity_master_key[i];
+                *item = self.identity_master_key[i];
             } else {
-                encrypted_data[i] = self.identity_lock_key[i - 32];
+                *item = self.identity_lock_key[i - 32];
             }
         }
         let mut unencrypted_data: [u8; 64] = [0; 64];

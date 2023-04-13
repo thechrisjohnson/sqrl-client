@@ -11,8 +11,8 @@ pub(crate) trait ReadableVector {
 impl ReadableVector for VecDeque<u8> {
     fn next_u16(&mut self) -> Result<u16, SqrlError> {
         let mut holder: [u8; 2] = [0; 2];
-        for i in 0..2 {
-            holder[i] = self
+        for i in &mut holder {
+            *i = self
                 .pop_front()
                 .ok_or(SqrlError::new("Invalid binary data".to_owned()))?;
         }
@@ -21,8 +21,8 @@ impl ReadableVector for VecDeque<u8> {
 
     fn next_u32(&mut self) -> Result<u32, SqrlError> {
         let mut holder: [u8; 4] = [0; 4];
-        for i in 0..4 {
-            holder[i] = self
+        for i in &mut holder {
+            *i = self
                 .pop_front()
                 .ok_or(SqrlError::new("Invalid binary data".to_owned()))?;
         }

@@ -209,7 +209,7 @@ impl SqrlClient {
         if let Some(ref mut previous_identities) = self.previous_identities {
             let current_identity_master_key = self
                 .user_configuration
-                .decrypt_identity_master_key(&password)?;
+                .decrypt_identity_master_key(password)?;
 
             previous_identities.rekey_previous_identities(
                 &current_identity_master_key,
@@ -642,7 +642,7 @@ fn decode_textual_identity(textual_identity: &str) -> Result<VecDeque<u8>, SqrlE
                 power *= 56u32;
             }
 
-            if let Some(index) = find_char_in_array(&TEXT_IDENTITY_ALPHABET, c) {
+            if let Some(index) = TEXT_IDENTITY_ALPHABET.iter().position(|&r| r == c) {
                 data += index * &power;
             } else {
                 return Err(SqrlError::new(
@@ -653,16 +653,6 @@ fn decode_textual_identity(textual_identity: &str) -> Result<VecDeque<u8>, SqrlE
     }
 
     Ok(convert_vec(data.to_bytes_le()))
-}
-
-fn find_char_in_array(array: &[char], character: char) -> Option<usize> {
-    for i in 0..array.len() {
-        if array[i] == character {
-            return Some(i);
-        }
-    }
-
-    None
 }
 
 fn convert_vec(mut input: Vec<u8>) -> VecDeque<u8> {

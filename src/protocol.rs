@@ -84,26 +84,19 @@ pub struct ClientParameters {
 impl ClientParameters {
     pub fn new(
         cmd: ClientCommand,
-        idk: String,
-        opt: Option<String>,
-        btn: Option<u8>,
-        pidk: Option<String>,
-        ins: Option<String>,
-        pins: Option<String>,
-        suk: Option<String>,
-        vuk: Option<String>,
+        idk: String
     ) -> ClientParameters {
         ClientParameters {
             ver: PROTOCOL_VERSION,
             cmd,
             idk,
-            opt,
-            btn,
-            pidk,
-            ins,
-            pins,
-            suk,
-            vuk,
+            opt: None,
+            btn: None,
+            pidk: None,
+            ins: None,
+            pins: None,
+            suk: None,
+            vuk: None,
         }
     }
 
@@ -255,23 +248,18 @@ impl ServerResponse {
     pub fn new(
         nut: String,
         tif: u16,
-        qry: String,
-        url: Option<String>,
-        can: Option<String>,
-        sin: Option<String>,
-        suk: Option<String>,
-        ask: Option<String>,
+        qry: String
     ) -> ServerResponse {
         ServerResponse {
             ver: PROTOCOL_VERSION,
             nut,
             tif,
             qry,
-            url,
-            can,
-            sin,
-            suk,
-            ask,
+            url: None,
+            can: None,
+            sin: None,
+            suk: None,
+            ask: None,
         }
     }
 
@@ -384,15 +372,7 @@ mod tests {
     fn encode_example_client_parameters() {
         let client_parameters = ClientParameters::new(
             ClientCommand::Query,
-            "iggcu_e-tWq3sogaa2aADCsxRZED9on9H716TAyPR0w".to_owned(),
-            Some("cps~suk".to_owned()),
-            None,
-            Some("E6Qs2gX7W-Pwi9Y3KAmbkuYjLSWXCtKyBcymWloHAuo".to_owned()),
-            None,
-            None,
-            None,
-            None,
-        );
+            "iggcu_e-tWq3sogaa2aADCsxRZED9on9H716TAyPR0w".to_owned());
 
         let decoded_params = ClientParameters::from_base64(&client_parameters.encode()).unwrap();
         assert_eq!(client_parameters, decoded_params);
