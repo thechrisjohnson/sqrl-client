@@ -463,8 +463,8 @@ impl DataType {
         }
     }
 
-    fn to_binary(&self, output: &mut Vec<u8>) -> Result<(), SqrlError> {
-        output.write_u16::<LittleEndian>(*self as u16)?;
+    fn to_binary(self, output: &mut Vec<u8>) -> Result<(), SqrlError> {
+        output.write_u16::<LittleEndian>(self as u16)?;
 
         Ok(())
     }

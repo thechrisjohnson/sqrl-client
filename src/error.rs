@@ -54,10 +54,10 @@ impl fmt::Debug for SqrlError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "{} {{ file: {}, line: {} }}",
+            "{} {}",
             self.error_message,
-            file!(),
-            line!()
+            // Temp fix until https://github.com/rust-lang/rust-clippy/issues/2768 is fixed
+            concat!("{{ file: ", file!(), ", line: ", line!(), " }}")
         )
     }
 }
