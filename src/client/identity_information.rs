@@ -206,7 +206,7 @@ impl WritableDataBlock for IdentityInformation {
             idle_timeout_min,
             identity_master_key,
             identity_lock_key,
-            verification_data
+            verification_data,
         })
     }
 

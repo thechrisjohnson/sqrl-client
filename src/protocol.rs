@@ -82,10 +82,7 @@ pub struct ClientParameters {
 }
 
 impl ClientParameters {
-    pub fn new(
-        cmd: ClientCommand,
-        idk: String
-    ) -> ClientParameters {
+    pub fn new(cmd: ClientCommand, idk: String) -> ClientParameters {
         ClientParameters {
             ver: PROTOCOL_VERSION,
             cmd,
@@ -245,11 +242,7 @@ pub struct ServerResponse {
 }
 
 impl ServerResponse {
-    pub fn new(
-        nut: String,
-        tif: u16,
-        qry: String
-    ) -> ServerResponse {
+    pub fn new(nut: String, tif: u16, qry: String) -> ServerResponse {
         ServerResponse {
             ver: PROTOCOL_VERSION,
             nut,
@@ -372,7 +365,8 @@ mod tests {
     fn encode_example_client_parameters() {
         let client_parameters = ClientParameters::new(
             ClientCommand::Query,
-            "iggcu_e-tWq3sogaa2aADCsxRZED9on9H716TAyPR0w".to_owned());
+            "iggcu_e-tWq3sogaa2aADCsxRZED9on9H716TAyPR0w".to_owned(),
+        );
 
         let decoded_params = ClientParameters::from_base64(&client_parameters.encode()).unwrap();
         assert_eq!(client_parameters, decoded_params);
