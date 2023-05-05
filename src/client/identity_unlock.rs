@@ -1,13 +1,12 @@
 use super::common::EMPTY_NONCE;
 use super::readable_vector::ReadableVector;
-use super::scrypt::{en_scrypt, mut_en_scrypt, Scrypt};
+use super::scrypt::{en_scrypt, mut_en_scrypt, ScryptConfig};
 use super::writable_datablock::WritableDataBlock;
 use super::{AesVerificationData, DataType, IdentityKey};
 use crate::error::SqrlError;
+use aes_gcm::aead::{Aead, Payload};
+use aes_gcm::{Aes256Gcm, KeyInit};
 use byteorder::{LittleEndian, WriteBytesExt};
-use crypto::aead::{AeadDecryptor, AeadEncryptor};
-use crypto::aes::KeySize;
-use crypto::aes_gcm::AesGcm;
 use num_bigint::BigUint;
 use num_traits::ToPrimitive;
 use rand::prelude::StdRng;
@@ -21,7 +20,7 @@ const RESCUE_CODE_ALPHABET: [char; 10] = ['0', '1', '2', '3', '4', '5', '6', '7'
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct IdentityUnlockData {
-    scrypt_config: Scrypt,
+    scrypt_config: ScryptConfig,
     identity_unlock_key: [u8; 32],
     verification_data: AesVerificationData,
 }
@@ -29,7 +28,7 @@ pub(crate) struct IdentityUnlockData {
 impl IdentityUnlockData {
     pub(crate) fn new(identity_unlock_key: IdentityKey) -> Result<(Self, String), SqrlError> {
         let mut identity_unlock = IdentityUnlockData {
-            scrypt_config: Scrypt::new(),
+            scrypt_config: ScryptConfig::new(),
             identity_unlock_key: [0; 32],
             verification_data: [0; 16],
         };
@@ -49,7 +48,6 @@ impl IdentityUnlockData {
             previous_identity_key = self.decrypt_identity_unlock_key(previous_rescue_code)?;
         }
 
-        let mut encrypted_data: [u8; 32] = [0; 32];
         let rescue_code = generate_rescue_code();
         let decoded_rescue_code = decode_rescue_code(&rescue_code);
 
@@ -57,21 +55,22 @@ impl IdentityUnlockData {
             decoded_rescue_code.as_bytes(),
             &mut self.scrypt_config,
             RESCUE_CODE_SCRYPT_TIME,
-        );
-        let mut aes = AesGcm::new(
-            KeySize::KeySize256,
-            &key,
-            &EMPTY_NONCE,
-            self.aad()?.as_slice(),
-        );
+        )?;
 
-        aes.encrypt(
-            &identity_unlock_key,
-            &mut encrypted_data,
-            &mut self.verification_data,
-        );
+        let aes = Aes256Gcm::new(&key.into());
+        let payload = Payload {
+            msg: &identity_unlock_key,
+            aad: &self.aad()?,
+        };
 
-        self.identity_unlock_key = encrypted_data;
+        let encrypted_data = aes.encrypt(&EMPTY_NONCE.into(), payload)?;
+        for (i, x) in encrypted_data.iter().enumerate() {
+            if i < 32 {
+                self.identity_unlock_key[i] = *x;
+            } else {
+                self.verification_data[i - 32] = *x;
+            }
+        }
 
         Ok((rescue_code, previous_identity_key))
     }
@@ -84,23 +83,30 @@ impl IdentityUnlockData {
         let decoded_rescue_key = decode_rescue_code(rescue_code);
         let key = en_scrypt(decoded_rescue_key.as_bytes(), &self.scrypt_config)?;
 
-        let mut aes = AesGcm::new(
-            KeySize::KeySize256,
-            &key,
-            &EMPTY_NONCE,
-            self.aad()?.as_slice(),
-        );
-        if aes.decrypt(
-            &self.identity_unlock_key,
-            &mut unencrypted_data,
-            &self.verification_data,
-        ) {
-            Ok(unencrypted_data)
-        } else {
-            Err(SqrlError::new(
-                "Decryption failed. Check your rescue code!".to_owned(),
-            ))
+        let mut encrypted_data: [u8; 48] = [0; 48];
+        for (i, item) in encrypted_data.iter_mut().enumerate() {
+            if i < 32 {
+                *item = self.identity_unlock_key[i];
+            } else {
+                *item = self.verification_data[i - 32];
+            }
         }
+
+        let aes = Aes256Gcm::new(&key.into());
+        let payload = Payload {
+            msg: &encrypted_data,
+            aad: &self.aad()?,
+        };
+
+        for (i, x) in aes
+            .decrypt(&EMPTY_NONCE.into(), payload)?
+            .iter()
+            .enumerate()
+        {
+            unencrypted_data[i] = *x;
+        }
+
+        Ok(unencrypted_data)
     }
 
     fn aad(&self) -> Result<Vec<u8>, SqrlError> {
@@ -111,7 +117,6 @@ impl IdentityUnlockData {
         Ok(result)
     }
 }
-
 impl WritableDataBlock for IdentityUnlockData {
     fn get_type(&self) -> DataType {
         DataType::RescueCode
@@ -123,7 +128,7 @@ impl WritableDataBlock for IdentityUnlockData {
 
     fn from_binary(binary: &mut VecDeque<u8>) -> Result<Self, SqrlError> {
         Ok(IdentityUnlockData {
-            scrypt_config: Scrypt::from_binary(binary)?,
+            scrypt_config: ScryptConfig::from_binary(binary)?,
             identity_unlock_key: binary.next_sub_array(32)?.as_slice().try_into()?,
             verification_data: binary.next_sub_array(16)?.as_slice().try_into()?,
         })

@@ -14,17 +14,12 @@ use self::{
 use crate::error::SqrlError;
 use base64::{prelude::BASE64_URL_SAFE, Engine};
 use byteorder::{LittleEndian, WriteBytesExt};
-use crypto::{
-    curve25519::ge_scalarmult_base,
-    digest::Digest,
-    ed25519::{keypair, signature},
-    hmac::Hmac,
-    mac::Mac,
-    sha2::Sha256,
-};
+use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signature, Signer};
+use hmac::{Hmac, Mac};
 use num_bigint::BigUint;
 use num_traits::{FromPrimitive, ToPrimitive};
 use rand::{prelude::StdRng, RngCore, SeedableRng};
+use sha2::{Digest, Sha256};
 use std::{collections::VecDeque, fs::File, io::Write};
 use url::{Host, Url};
 
@@ -92,7 +87,9 @@ impl SqrlClient {
         // From the identity unlock key, generate the identity lock key and identity master key
         // NOTE: The identity_lock_key is the "public key" for an ECDHKA ED25519 where the private key is the identity unlock key
         let identity_master_key = en_hash(&identity_unlock_key);
-        let identity_lock_key = ge_scalarmult_base(&identity_unlock_key).to_bytes();
+        let secret_key = SecretKey::from_bytes(&identity_unlock_key)?;
+        let public_key: PublicKey = (&secret_key).into();
+        let identity_lock_key = public_key.to_bytes();
 
         // Encrypt the identity unlock key with a random rescue code to return
         let (identity_unlock, rescue_code) = IdentityUnlockData::new(identity_unlock_key)?;
@@ -121,7 +118,9 @@ impl SqrlClient {
         // From the identity unlock key, generate the identity lock key and identity master key
         // NOTE: The identity_lock_key is the "public key" for an ECDHKA ED25519 where the private key is the identity unlock key
         let identity_master_key = en_hash(&identity_unlock_key);
-        let identity_lock_key = ge_scalarmult_base(&identity_unlock_key).to_bytes();
+        let secret_key = SecretKey::from_bytes(&identity_unlock_key)?;
+        let public_key: PublicKey = (&secret_key).into();
+        let identity_lock_key = public_key.to_bytes();
 
         // Encrypt the identity master key and identity lock key in
         let user_configuration =
@@ -151,7 +150,7 @@ impl SqrlClient {
         url: &str,
         alternate_identity: Option<&str>,
         request: &str,
-    ) -> Result<[u8; 64], SqrlError> {
+    ) -> Result<Signature, SqrlError> {
         let parse = Url::parse(url)?;
         let host = match parse
             .host()
@@ -174,11 +173,12 @@ impl SqrlClient {
         secret_index: &str,
     ) -> Result<String, SqrlError> {
         let keys = self.get_keys(password, hostname, alternate_identity)?;
-        let hash = en_hash(&keys.private_key);
-        let mut hmac = Hmac::new(Sha256::new(), &hash);
-        hmac.input(secret_index.as_bytes());
+        let hash = en_hash(keys.secret.as_bytes());
+        let mut hmac = Hmac::<Sha256>::new_from_slice(&hash)?;
+        hmac.update(secret_index.as_bytes());
 
-        Ok(BASE64_URL_SAFE.encode(hmac.result().code()))
+        // TODO: What was "code" in this case?
+        Ok(BASE64_URL_SAFE.encode(hmac.finalize().into_bytes()))
     }
 
     pub fn rekey_identity(
@@ -198,7 +198,9 @@ impl SqrlClient {
 
         // From the identity unlock key, generate the new identity lock key and identity master key
         let new_identity_master_key = en_hash(&new_identity_unlock_key);
-        let new_identity_lock_key = ge_scalarmult_base(&new_identity_unlock_key).to_bytes();
+        let secret_key = SecretKey::from_bytes(&new_identity_unlock_key)?;
+        let public_key: PublicKey = (&secret_key).into();
+        let new_identity_lock_key = public_key.to_bytes();
 
         // Encrypt the identity unlock key with a random rescue code to return
         let (new_identity_unlock, new_rescue_code) =
@@ -245,9 +247,9 @@ impl SqrlClient {
         password: &str,
         hostname: &str,
         alternate_identity: Option<&str>,
-    ) -> Result<PublicIdentity, SqrlError> {
+    ) -> Result<PublicKey, SqrlError> {
         let keys = self.get_keys(password, hostname, alternate_identity)?;
-        Ok(keys.public_key)
+        Ok(keys.public)
     }
 
     // TODO
@@ -267,7 +269,7 @@ impl SqrlClient {
         password: &str,
         hostname: &str,
         alternate_identity: Option<&str>,
-    ) -> Result<KeyPair, SqrlError> {
+    ) -> Result<Keypair, SqrlError> {
         let data = match alternate_identity {
             Some(id) => format!("{}{}", hostname, id),
             None => hostname.to_owned(),
@@ -276,13 +278,15 @@ impl SqrlClient {
         let key = self
             .user_configuration
             .decrypt_identity_master_key(password)?;
-        let mut hmac = Hmac::new(Sha256::new(), &key);
-        hmac.input(data.as_bytes());
-        let (public, private) = keypair(hmac.result().code());
+        let mut hmac = Hmac::<Sha256>::new_from_slice(&key)?;
+        hmac.update(data.as_bytes());
 
-        Ok(KeyPair {
-            public_key: public,
-            private_key: private,
+        let private = SecretKey::from_bytes(&hmac.finalize().into_bytes())?;
+        let public: PublicKey = (&private).into();
+
+        Ok(Keypair {
+            public,
+            secret: private,
         })
     }
 
@@ -470,27 +474,14 @@ impl DataType {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
-pub(crate) struct KeyPair {
-    pub(crate) private_key: [u8; 32],
-    pub(crate) public_key: [u8; 64],
-}
-
-impl KeyPair {
-    pub(crate) fn sign(&self, request: &[u8]) -> [u8; 64] {
-        signature(request, &self.private_key)
-    }
-}
-
 fn en_hash(input: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();
-    hasher.input(input);
+    hasher.update(input);
     let mut output: [u8; 32] = [0; 32];
-    let mut hash_result: [u8; 32] = [0; 32];
     for _ in 0..16 {
-        hasher.result(&mut hash_result);
-        hasher.reset();
-        hasher.input(&hash_result);
+        let hash_result: [u8; 32] = hasher.finalize().into();
+        hasher = Sha256::new();
+        hasher.update(hash_result);
         xor(&mut output, &hash_result);
     }
 
@@ -499,8 +490,6 @@ fn en_hash(input: &[u8]) -> [u8; 32] {
 
 fn validate_textual_identity(textual_identity: &str) -> Result<(), SqrlError> {
     let mut line_num: u8 = 0;
-    let mut output: [u8; 32] = [0; 32];
-    let mut hasher = Sha256::new();
     for line in textual_identity.lines() {
         // Take each character and convert it to value
         let mut bytes: Vec<u8> = Vec::new();
@@ -515,8 +504,9 @@ fn validate_textual_identity(textual_identity: &str) -> Result<(), SqrlError> {
         bytes.push(line_num);
 
         // Hash the results
-        hasher.input(&bytes);
-        hasher.result(&mut output);
+        let mut hasher = Sha256::new();
+        hasher.update(&bytes);
+        let output: [u8; 32] = hasher.finalize().into();
 
         // mod 56 the result and compare with the last character
         let hash = BigUint::from_bytes_le(&output);
@@ -536,7 +526,6 @@ fn validate_textual_identity(textual_identity: &str) -> Result<(), SqrlError> {
         }
 
         // Get ready for the next iteration
-        hasher.reset();
         line_num += 1;
     }
 
@@ -546,8 +535,6 @@ fn validate_textual_identity(textual_identity: &str) -> Result<(), SqrlError> {
 fn encode_textual_identity(client: &SqrlClient) -> Result<String, SqrlError> {
     let mut textual_identity = String::new();
     let mut bytes: Vec<u8> = Vec::new();
-    let mut hasher = Sha256::new();
-    let mut output: [u8; 32] = [0; 32];
     let mut line_number: u8 = 0;
 
     // Get the binary representation of the identity unlock key
@@ -570,8 +557,9 @@ fn encode_textual_identity(client: &SqrlClient) -> Result<String, SqrlError> {
                 textual_identity.push(' ');
             } else if bytes.len() == 19 || character == encoded_size {
                 bytes.push(line_number);
-                hasher.input(&bytes);
-                hasher.result(&mut output);
+                let mut hasher = Sha256::new();
+                hasher.update(&bytes);
+                let output: [u8; 32] = hasher.finalize().into();
                 // mod 56 the result and compare with the last character
                 let hash = BigUint::from_bytes_le(&output);
                 if let Some(result) = (hash % 56u8).to_usize() {
@@ -587,7 +575,6 @@ fn encode_textual_identity(client: &SqrlClient) -> Result<String, SqrlError> {
                 if character != encoded_size {
                     line_number += 1;
                     bytes.clear();
-                    hasher.reset();
                     textual_identity.push('\n');
                 }
             }

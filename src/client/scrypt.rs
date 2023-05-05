@@ -1,8 +1,8 @@
 use super::{common::xor, readable_vector::ReadableVector};
 use crate::error::SqrlError;
 use byteorder::{LittleEndian, WriteBytesExt};
-use crypto::scrypt::{scrypt, ScryptParams};
 use rand::{prelude::StdRng, RngCore, SeedableRng};
+use scrypt::{scrypt, Params};
 use std::{collections::VecDeque, convert::TryInto, io::Write, time::Instant};
 
 pub(crate) const SCRYPT_DEFAULT_LOG_N: u8 = 9;
@@ -10,19 +10,19 @@ pub(crate) const SCRYPT_DEFAULT_R: u32 = 256;
 pub(crate) const SCRYPT_DEFAULT_P: u32 = 1;
 
 #[derive(Debug, PartialEq)]
-pub(crate) struct Scrypt {
+pub(crate) struct ScryptConfig {
     pub random_salt: [u8; 16],
     pub log_n_factor: u8,
     pub iteration_factor: Option<u32>,
 }
 
-impl Scrypt {
+impl ScryptConfig {
     pub(crate) fn new() -> Self {
         let mut random = StdRng::from_entropy();
         let mut salt: [u8; 16] = [0; 16];
         random.fill_bytes(&mut salt);
 
-        Scrypt {
+        ScryptConfig {
             random_salt: salt,
             log_n_factor: SCRYPT_DEFAULT_LOG_N,
             iteration_factor: None,
@@ -30,7 +30,7 @@ impl Scrypt {
     }
 
     pub(crate) fn from_binary(binary: &mut VecDeque<u8>) -> Result<Self, SqrlError> {
-        Ok(Scrypt {
+        Ok(ScryptConfig {
             random_salt: binary.next_sub_array(16)?.as_slice().try_into()?,
             log_n_factor: binary
                 .pop_front()
@@ -58,26 +58,27 @@ impl Scrypt {
 
 pub(crate) fn mut_en_scrypt(
     password: &[u8],
-    scrypt_config: &mut Scrypt,
+    scrypt_config: &mut ScryptConfig,
     pw_verify_sec: u8,
-) -> [u8; 32] {
+) -> Result<[u8; 32], SqrlError> {
     let mut output: [u8; 32] = [0; 32];
     let mut input: [u8; 32] = [0; 32];
     let mut temp: [u8; 32] = [0; 32];
 
-    let params = ScryptParams::new(
+    let params = Params::new(
         scrypt_config.log_n_factor,
         SCRYPT_DEFAULT_R,
         SCRYPT_DEFAULT_P,
-    );
+        32,
+    )?;
 
     match scrypt_config.iteration_factor {
         Some(factor) => {
             for i in 0..factor {
                 if i == 0 {
-                    scrypt(password, &scrypt_config.random_salt, &params, &mut temp);
+                    scrypt(password, &scrypt_config.random_salt, &params, &mut temp)?;
                 } else {
-                    scrypt(password, &input, &params, &mut temp);
+                    scrypt(password, &input, &params, &mut temp)?;
                 }
 
                 xor(&mut output, &temp);
@@ -89,9 +90,9 @@ pub(crate) fn mut_en_scrypt(
             let mut count = 0;
             loop {
                 if count == 0 {
-                    scrypt(password, &scrypt_config.random_salt, &params, &mut temp);
+                    scrypt(password, &scrypt_config.random_salt, &params, &mut temp)?;
                 } else {
-                    scrypt(password, &input, &params, &mut temp);
+                    scrypt(password, &input, &params, &mut temp)?;
                 }
 
                 xor(&mut output, &temp);
@@ -106,27 +107,31 @@ pub(crate) fn mut_en_scrypt(
         }
     }
 
-    output
+    Ok(output)
 }
 
-pub(crate) fn en_scrypt(password: &[u8], scrypt_config: &Scrypt) -> Result<[u8; 32], SqrlError> {
+pub(crate) fn en_scrypt(
+    password: &[u8],
+    scrypt_config: &ScryptConfig,
+) -> Result<[u8; 32], SqrlError> {
     let mut output: [u8; 32] = [0; 32];
     let mut input: [u8; 32] = [0; 32];
     let mut temp: [u8; 32] = [0; 32];
 
-    let params = ScryptParams::new(
+    let params = Params::new(
         scrypt_config.log_n_factor,
         SCRYPT_DEFAULT_R,
         SCRYPT_DEFAULT_P,
-    );
+        32,
+    )?;
 
     match scrypt_config.iteration_factor {
         Some(factor) => {
             for i in 0..factor {
                 if i == 0 {
-                    scrypt(password, &scrypt_config.random_salt, &params, &mut temp);
+                    scrypt(password, &scrypt_config.random_salt, &params, &mut temp)?;
                 } else {
-                    scrypt(password, &input, &params, &mut temp);
+                    scrypt(password, &input, &params, &mut temp)?;
                 }
 
                 xor(&mut output, &temp);
