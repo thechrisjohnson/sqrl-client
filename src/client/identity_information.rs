@@ -134,16 +134,17 @@ impl IdentityInformation {
     }
 
     fn decrypt(&self, password: &str) -> Result<[u8; 64], SqrlError> {
-        let mut encrypted_data: [u8; 80] = [0; 80];
-        for (i, item) in encrypted_data.iter_mut().enumerate() {
-            if i < 32 {
-                *item = self.identity_master_key[i];
-            } else if i < 64 {
-                *item = self.identity_lock_key[i - 32];
-            } else {
-                *item = self.verification_data[i - 64];
-            }
+        let mut encrypted_data: Vec<u8> = Vec::new();
+        for byte in self.identity_master_key {
+            encrypted_data.push(byte);
         }
+        for byte in self.identity_lock_key {
+            encrypted_data.push(byte);
+        }
+        for byte in self.verification_data {
+            encrypted_data.push(byte);
+        }
+
         let key = en_scrypt(password.as_bytes(), &self.scrypt_config)?;
         let mut aes = Aes256Gcm::new(&key.into());
         let payload = Payload {
