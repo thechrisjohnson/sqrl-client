@@ -1,23 +1,22 @@
 use super::{
     readable_vector::ReadableVector,
-    scrypt::{en_scrypt, mut_en_scrypt, Scrypt},
+    scrypt::{en_scrypt, mut_en_scrypt, ScryptConfig},
     writable_datablock::WritableDataBlock,
     AesVerificationData, DataType, IdentityKey,
 };
 use crate::error::SqrlError;
-use byteorder::{LittleEndian, WriteBytesExt};
-use crypto::{
-    aead::{AeadDecryptor, AeadEncryptor},
-    aes::KeySize,
-    aes_gcm::AesGcm,
+use aes_gcm::{
+    aead::{AeadMut, Payload},
+    Aes256Gcm, KeyInit,
 };
+use byteorder::{LittleEndian, WriteBytesExt};
 use rand::{prelude::StdRng, RngCore, SeedableRng};
 use std::{collections::VecDeque, convert::TryInto, io::Write};
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct IdentityInformation {
     aes_gcm_iv: [u8; 12],
-    scrypt_config: Scrypt,
+    scrypt_config: ScryptConfig,
     option_flags: u16,
     hint_length: u8,
     pw_verify_sec: u8,
@@ -35,7 +34,7 @@ impl IdentityInformation {
     ) -> Result<Self, SqrlError> {
         let mut config = IdentityInformation {
             aes_gcm_iv: [0; 12],
-            scrypt_config: Scrypt::new(),
+            scrypt_config: ScryptConfig::new(),
             option_flags: 0,
             hint_length: 0,
             pw_verify_sec: 5,
@@ -97,7 +96,6 @@ impl IdentityInformation {
         identity_lock_key: [u8; 32],
     ) -> Result<(), SqrlError> {
         let mut random = StdRng::from_entropy();
-        let mut encrypted_data: [u8; 64] = [0; 64];
         let mut to_encrypt = Vec::new();
         to_encrypt.write_all(&identity_master_key)?;
         to_encrypt.write_all(&identity_lock_key)?;
@@ -106,27 +104,23 @@ impl IdentityInformation {
             password.as_bytes(),
             &mut self.scrypt_config,
             self.pw_verify_sec,
-        );
+        )?;
 
         random.fill_bytes(&mut self.aes_gcm_iv);
-        let mut aes = AesGcm::new(
-            KeySize::KeySize256,
-            &key,
-            &self.aes_gcm_iv,
-            self.aad()?.as_slice(),
-        );
-
-        aes.encrypt(
-            &to_encrypt,
-            &mut encrypted_data,
-            &mut self.verification_data,
-        );
+        let mut aes = Aes256Gcm::new(&key.into());
+        let payload = Payload {
+            msg: &to_encrypt,
+            aad: &self.aad()?,
+        };
+        let encrypted_data = aes.encrypt(&self.aes_gcm_iv.into(), payload)?;
 
         for (i, item) in encrypted_data.iter().enumerate() {
             if i < 32 {
                 self.identity_master_key[i] = *item;
-            } else {
+            } else if i < 64 {
                 self.identity_lock_key[i - 32] = *item;
+            } else {
+                self.verification_data[i - 64] = *item;
             }
         }
 
@@ -140,33 +134,33 @@ impl IdentityInformation {
     }
 
     fn decrypt(&self, password: &str) -> Result<[u8; 64], SqrlError> {
-        let mut encrypted_data: [u8; 64] = [0; 64];
+        let mut encrypted_data: [u8; 80] = [0; 80];
         for (i, item) in encrypted_data.iter_mut().enumerate() {
             if i < 32 {
                 *item = self.identity_master_key[i];
-            } else {
+            } else if i < 64 {
                 *item = self.identity_lock_key[i - 32];
+            } else {
+                *item = self.verification_data[i - 64];
             }
         }
-        let mut unencrypted_data: [u8; 64] = [0; 64];
         let key = en_scrypt(password.as_bytes(), &self.scrypt_config)?;
-        let mut aes = AesGcm::new(
-            KeySize::KeySize256,
-            &key,
-            &self.aes_gcm_iv,
-            self.aad()?.as_slice(),
-        );
-        if aes.decrypt(
-            &encrypted_data,
-            &mut unencrypted_data,
-            &self.verification_data,
-        ) {
-            Ok(unencrypted_data)
-        } else {
-            Err(SqrlError::new(
-                "Decryption failed. Check your password!".to_owned(),
-            ))
+        let mut aes = Aes256Gcm::new(&key.into());
+        let payload = Payload {
+            msg: &encrypted_data,
+            aad: &self.aad()?,
+        };
+
+        let mut decrypted_data: [u8; 64] = [0; 64];
+        for (i, x) in aes
+            .decrypt(&self.aes_gcm_iv.into(), payload)?
+            .iter()
+            .enumerate()
+        {
+            decrypted_data[i] = *x;
         }
+
+        Ok(decrypted_data)
     }
 }
 
@@ -184,7 +178,7 @@ impl WritableDataBlock for IdentityInformation {
         binary.skip(2);
 
         let aes_gcm_iv = binary.next_sub_array(12)?.as_slice().try_into()?;
-        let scrypt_config = Scrypt::from_binary(binary)?;
+        let scrypt_config = ScryptConfig::from_binary(binary)?;
         let option_flags = binary.next_u16()?;
         let hint_length = binary
             .pop_front()

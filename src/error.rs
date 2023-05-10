@@ -1,5 +1,7 @@
 use std::{fmt, string::FromUtf8Error};
 
+use scrypt::errors::{InvalidOutputLen, InvalidParams};
+
 pub struct SqrlError {
     error_message: String,
 }
@@ -41,6 +43,36 @@ impl From<base64::DecodeError> for SqrlError {
 impl From<FromUtf8Error> for SqrlError {
     fn from(error: FromUtf8Error) -> Self {
         SqrlError::new(error.to_string())
+    }
+}
+
+impl From<InvalidParams> for SqrlError {
+    fn from(value: InvalidParams) -> Self {
+        SqrlError::new(value.to_string())
+    }
+}
+
+impl From<InvalidOutputLen> for SqrlError {
+    fn from(value: InvalidOutputLen) -> Self {
+        SqrlError::new(value.to_string())
+    }
+}
+
+impl From<aes_gcm::Error> for SqrlError {
+    fn from(value: aes_gcm::Error) -> Self {
+        SqrlError::new(value.to_string())
+    }
+}
+
+impl From<hmac::digest::InvalidLength> for SqrlError {
+    fn from(value: hmac::digest::InvalidLength) -> Self {
+        SqrlError::new(value.to_string())
+    }
+}
+
+impl From<ed25519_dalek::ed25519::Error> for SqrlError {
+    fn from(value: ed25519_dalek::ed25519::Error) -> Self {
+        SqrlError::new(value.to_string())
     }
 }
 

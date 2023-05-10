@@ -3,11 +3,10 @@ use super::{
     readable_vector::ReadableVector, writable_datablock::WritableDataBlock, DataType, IdentityKey,
 };
 use crate::error::SqrlError;
+use aes_gcm::aead::{AeadMut, Payload};
+use aes_gcm::{Aes256Gcm, KeyInit};
 use byteorder::{LittleEndian, WriteBytesExt};
 use client::AesVerificationData;
-use crypto::aead::{AeadDecryptor, AeadEncryptor};
-use crypto::aes::KeySize;
-use crypto::aes_gcm::AesGcm;
 use std::io::Write;
 use std::{collections::VecDeque, convert::TryInto};
 
@@ -73,6 +72,7 @@ impl PreviousIdentityData {
         &self,
         identity_master_key: &[u8],
     ) -> Result<VecDeque<IdentityKey>, SqrlError> {
+        // Append the various previous identities and the verification data
         let mut encrypted_data = Vec::new();
         for key in self.previous_identity_unlock_keys.iter() {
             for byte in key {
@@ -80,35 +80,28 @@ impl PreviousIdentityData {
             }
         }
 
-        let mut aes = AesGcm::new(
-            KeySize::KeySize256,
-            identity_master_key,
-            &EMPTY_NONCE,
-            self.aad()?.as_slice(),
-        );
-
-        let mut unencrypted_data = vec![0; (self.edition * 32).into()];
-        if aes.decrypt(
-            &encrypted_data,
-            &mut unencrypted_data,
-            &self.verification_data,
-        ) {
-            let mut result = VecDeque::new();
-            let mut iter = unencrypted_data.into_iter();
-            for _ in 0..self.edition {
-                let mut key: IdentityKey = [0; 32];
-                for i in &mut key {
-                    *i = iter.next().unwrap();
-                }
-                result.push_back(key);
-            }
-
-            Ok(result)
-        } else {
-            Err(SqrlError::new(
-                "Decryption failed. Check the identity master key!".to_owned(),
-            ))
+        for byte in self.verification_data {
+            encrypted_data.push(byte);
         }
+
+        let mut aes = Aes256Gcm::new(identity_master_key.into());
+        let payload = Payload {
+            msg: &encrypted_data,
+            aad: &self.aad()?,
+        };
+
+        let unencrypted_data = aes.decrypt(&EMPTY_NONCE.into(), payload)?;
+        let mut result = VecDeque::new();
+        let mut iter = unencrypted_data.into_iter();
+        for _ in 0..self.edition {
+            let mut key: IdentityKey = [0; 32];
+            for i in &mut key {
+                *i = iter.next().unwrap();
+            }
+            result.push_back(key);
+        }
+
+        Ok(result)
     }
 
     fn encrypt_previous_identities(
@@ -121,19 +114,13 @@ impl PreviousIdentityData {
             Err(_) => return Err(SqrlError::new("Too many previous keys".to_owned())),
         };
 
-        let mut encrypted_data = vec![0; (num_keys * 32).into()];
-        let mut aes = AesGcm::new(
-            KeySize::KeySize256,
-            identity_master_key,
-            &EMPTY_NONCE,
-            self.aad()?.as_slice(),
-        );
+        let mut aes = Aes256Gcm::new(identity_master_key.into());
+        let payload = Payload {
+            msg: &unencrypted_keys.into_iter().flatten().collect::<Vec<u8>>(),
+            aad: &self.aad()?,
+        };
 
-        aes.encrypt(
-            &unencrypted_keys.into_iter().flatten().collect::<Vec<u8>>(),
-            &mut encrypted_data,
-            &mut self.verification_data,
-        );
+        let encrypted_data = aes.encrypt(&EMPTY_NONCE.into(), payload)?;
 
         let mut result = VecDeque::new();
         let mut iter = encrypted_data.into_iter();
