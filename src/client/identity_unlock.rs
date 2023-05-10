@@ -83,13 +83,12 @@ impl IdentityUnlockData {
         let decoded_rescue_key = decode_rescue_code(rescue_code);
         let key = en_scrypt(decoded_rescue_key.as_bytes(), &self.scrypt_config)?;
 
-        let mut encrypted_data: [u8; 48] = [0; 48];
-        for (i, item) in encrypted_data.iter_mut().enumerate() {
-            if i < 32 {
-                *item = self.identity_unlock_key[i];
-            } else {
-                *item = self.verification_data[i - 32];
-            }
+        let mut encrypted_data: Vec<u8> = Vec::new();
+        for byte in self.identity_unlock_key {
+            encrypted_data.push(byte);
+        }
+        for byte in self.verification_data {
+            encrypted_data.push(byte);
         }
 
         let aes = Aes256Gcm::new(&key.into());
