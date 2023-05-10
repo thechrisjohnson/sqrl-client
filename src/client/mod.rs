@@ -176,8 +176,6 @@ impl SqrlClient {
         let hash = en_hash(keys.secret.as_bytes());
         let mut hmac = Hmac::<Sha256>::new_from_slice(&hash)?;
         hmac.update(secret_index.as_bytes());
-
-        // TODO: What was "code" in this case?
         Ok(BASE64_URL_SAFE.encode(hmac.finalize().into_bytes()))
     }
 
@@ -252,7 +250,6 @@ impl SqrlClient {
         Ok(keys.public)
     }
 
-    // TODO
     pub fn generate_server_unlock_key(
         &self,
         password: &str,
