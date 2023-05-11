@@ -1,9 +1,12 @@
 use crate::error::SqrlError;
 use base64::{prelude::BASE64_URL_SAFE_NO_PAD, Engine};
-use std::{collections::HashMap, fmt};
+use std::{
+    collections::HashMap,
+    fmt::{self, Display},
+};
 
-// The current version of the sqrl protocol
-pub const PROTOCOL_VERSION: u64 = 1;
+// The list of supported versions
+pub const PROTOCOL_VERSIONS: &str = "1";
 
 // Constants for the Server TIF
 pub const SERVER_TIF_CURRENT_ID_MATCH: u16 = 0x1;
@@ -69,7 +72,7 @@ impl ClientRequest {
 
 #[derive(Debug, PartialEq)]
 pub struct ClientParameters {
-    pub ver: u64,
+    pub ver: ProtocolVersion,
     pub cmd: ClientCommand,
     pub idk: String,
     pub opt: Option<String>,
@@ -84,7 +87,7 @@ pub struct ClientParameters {
 impl ClientParameters {
     pub fn new(cmd: ClientCommand, idk: String) -> ClientParameters {
         ClientParameters {
-            ver: PROTOCOL_VERSION,
+            ver: ProtocolVersion::new(PROTOCOL_VERSIONS).unwrap(),
             cmd,
             idk,
             opt: None,
@@ -110,21 +113,7 @@ impl ClientParameters {
 
         // Validate the protocol version is supported
         let ver_string = get_or_error(&map, "ver", "Invalid client request: No version number")?;
-        let ver = match ver_string.parse::<u64>() {
-            Ok(x) => x,
-            Err(_) => {
-                return Err(SqrlError::new(format!(
-                    "Invalid client request: Unable to parse client request protocol version: {}",
-                    ver_string
-                )))
-            }
-        };
-        if ver > PROTOCOL_VERSION {
-            return Err(SqrlError::new(format!(
-                "Unsupported protocol version in client request (Supported: <= {}, Client Request: {}",
-                PROTOCOL_VERSION, &ver
-            )));
-        }
+        let ver = ProtocolVersion::new(&ver_string)?;
 
         let cmd_string = get_or_error(&map, "cmd", "Invalid client request: No cmd value")?;
         let cmd = ClientCommand::from(cmd_string);
@@ -229,8 +218,125 @@ impl From<String> for ClientCommand {
     }
 }
 
+#[derive(Debug, PartialEq)]
+pub struct ProtocolVersion {
+    versions: u128,
+    max_version: u8,
+}
+
+impl ProtocolVersion {
+    pub fn new(versions: &str) -> Result<Self, SqrlError> {
+        let mut prot = ProtocolVersion {
+            versions: 0,
+            max_version: 0,
+        };
+        for sub in versions.split(',') {
+            if sub.contains('-') {
+                let mut versions = sub.split('-');
+
+                // Parse out the lower and higher end of the range
+                let low: u8 = match versions.next() {
+                    Some(x) => x.parse::<u8>()?,
+                    None => {
+                        return Err(SqrlError::new(format!("Invalid version number {}", sub)));
+                    }
+                };
+                let high: u8 = match versions.next() {
+                    Some(x) => x.parse::<u8>()?,
+                    None => {
+                        return Err(SqrlError::new(format!("Invalid version number {}", sub)));
+                    }
+                };
+
+                // Make sure the range is valid
+                if low >= high {
+                    return Err(SqrlError::new(format!("Invalid version number {}", sub)));
+                }
+
+                // Set the neccesary values
+                for i in low..high + 1 {
+                    prot.versions |= 0b00000001 << (i - 1);
+                }
+                if high > prot.max_version {
+                    prot.max_version = high;
+                }
+            } else {
+                let version = sub.parse::<u8>()?;
+                prot.versions |= 0b00000001 << (version - 1);
+                if version > prot.max_version {
+                    prot.max_version = version;
+                }
+            }
+        }
+
+        Ok(prot)
+    }
+
+    pub fn get_max_matching_version(&self, other: &ProtocolVersion) -> Result<u8, SqrlError> {
+        let min_max = if self.max_version > other.max_version {
+            other.max_version
+        } else {
+            self.max_version
+        };
+        let bit: u128 = 0b00000001 << min_max;
+        for i in 0..min_max {
+            if self.versions & other.versions & (bit >> i) == bit >> i {
+                return Ok(min_max - i + 1);
+            }
+        }
+
+        Err(SqrlError::new(format!(
+            "No matching supported version! Ours: {} Theirs: {}",
+            self, other
+        )))
+    }
+}
+
+impl Display for ProtocolVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut versions: Vec<String> = Vec::new();
+        let mut current_min: Option<u8> = None;
+        let mut bit: u128 = 0b00000001;
+        for i in 0..self.max_version {
+            if self.versions & bit == bit {
+                // If we don't have a current min set it.
+                // Otherwise, keep going until the range ends
+                if current_min.is_none() {
+                    current_min = Some(i);
+                }
+            } else {
+                // Did we experience a range, or just a single one?
+                if let Some(min) = current_min {
+                    if i == min + 1 {
+                        // A streak of one
+                        versions.push(format!("{}", min + 1));
+                    } else {
+                        versions.push(format!("{}-{}", min + 1, i));
+                    }
+
+                    current_min = None;
+                }
+            }
+
+            bit <<= 1;
+        }
+
+        // If we still have a min set, we need to run that same code again
+        if let Some(min) = current_min {
+            if self.max_version == min + 1 {
+                // A streak of one
+                versions.push(format!("{}", min + 1));
+            } else {
+                versions.push(format!("{}-{}", min + 1, self.max_version));
+            }
+        }
+
+        write!(f, "{}", versions.join(","))
+    }
+}
+
 pub struct ServerResponse {
-    pub ver: u64,
+    pub ver: ProtocolVersion,
     pub nut: String,
     pub tif: u16,
     pub qry: String,
@@ -244,7 +350,7 @@ pub struct ServerResponse {
 impl ServerResponse {
     pub fn new(nut: String, tif: u16, qry: String) -> ServerResponse {
         ServerResponse {
-            ver: PROTOCOL_VERSION,
+            ver: ProtocolVersion::new(PROTOCOL_VERSIONS).unwrap(),
             nut,
             tif,
             qry,
@@ -263,22 +369,7 @@ impl ServerResponse {
 
         // Validate the protocol version is supported
         let ver_string = get_or_error(&data, "ver", "No version number in server response")?;
-        let ver = match ver_string.parse::<u64>() {
-            Ok(x) => x,
-            Err(_) => {
-                return Err(SqrlError::new(format!(
-                    "Unable to parse server response protocol version: {}",
-                    ver_string
-                )))
-            }
-        };
-        if ver > PROTOCOL_VERSION {
-            return Err(SqrlError::new(format!(
-                "Unsupported protocol version in server response (Supported: <= {}, Server: {}",
-                PROTOCOL_VERSION, &ver
-            )));
-        }
-
+        let ver = ProtocolVersion::new(&ver_string)?;
         let nut = get_or_error(&data, "nut", "No nut in server response")?;
         let tif_string = get_or_error(&data, "tif", "No status code (tif) in server response")?;
         let tif = match tif_string.parse::<u16>() {
@@ -345,7 +436,7 @@ mod tests {
     fn decode_example_client_parameters() {
         let client_parameters = ClientParameters::from_base64(TEST_QUERY).unwrap();
 
-        assert_eq!(client_parameters.ver, 1);
+        assert_eq!(client_parameters.ver.to_string(), "1");
         assert_eq!(client_parameters.cmd, ClientCommand::Query);
         assert_eq!(
             client_parameters.idk,
@@ -363,15 +454,41 @@ mod tests {
 
     #[test]
     fn encode_example_client_parameters() {
-        let client_parameters = ClientParameters::new(
+        let mut params = ClientParameters::new(
             ClientCommand::Query,
             "iggcu_e-tWq3sogaa2aADCsxRZED9on9H716TAyPR0w".to_owned(),
         );
+        params.pidk = Some("E6Qs2gX7W-Pwi9Y3KAmbkuYjLSWXCtKyBcymWloHAuo".to_owned());
+        params.opt = Some("cps-suk".to_owned());
 
-        let decoded_params = ClientParameters::from_base64(&client_parameters.encode()).unwrap();
-        assert_eq!(client_parameters, decoded_params);
+        // TODO: Write the base64 encoding code and finish this test
     }
 
     #[test]
-    fn decode_example_client_request() {}
+    fn protocol_version_create_valid_version() {
+        ProtocolVersion::new("1,2,6-7").unwrap();
+    }
+
+    #[test]
+    fn protocol_version_create_invalid_version() {
+        if let Ok(version) = ProtocolVersion::new("1,2,7-3") {
+            panic!("Version considered valid! {}", version);
+        }
+    }
+
+    #[test]
+    fn protocol_version_match_highest_version() {
+        let client = ProtocolVersion::new("1-7").unwrap();
+        let server = ProtocolVersion::new("1,3,5").unwrap();
+        assert_eq!(5, client.get_max_matching_version(&server).unwrap());
+    }
+
+    #[test]
+    fn protocol_version_no_version_match() {
+        let client = ProtocolVersion::new("1-3,5-7").unwrap();
+        let server = ProtocolVersion::new("4,8-12").unwrap();
+        if let Ok(x) = client.get_max_matching_version(&server) {
+            panic!("Matching version found! {}", x);
+        }
+    }
 }

@@ -1,4 +1,4 @@
-use std::{fmt, string::FromUtf8Error};
+use std::{fmt, num::ParseIntError, string::FromUtf8Error};
 
 use scrypt::errors::{InvalidOutputLen, InvalidParams};
 
@@ -76,6 +76,12 @@ impl From<ed25519_dalek::ed25519::Error> for SqrlError {
     }
 }
 
+impl From<ParseIntError> for SqrlError {
+    fn from(value: ParseIntError) -> Self {
+        SqrlError::new(value.to_string())
+    }
+}
+
 impl fmt::Display for SqrlError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.error_message)
@@ -84,12 +90,6 @@ impl fmt::Display for SqrlError {
 
 impl fmt::Debug for SqrlError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "{} {}",
-            self.error_message,
-            // Temp fix until https://github.com/rust-lang/rust-clippy/issues/2768 is fixed
-            concat!("{{ file: ", file!(), ", line: ", line!(), " }}")
-        )
+        write!(f, "{}", self.error_message)
     }
 }
