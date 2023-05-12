@@ -1,6 +1,5 @@
-use std::{fmt, num::ParseIntError, string::FromUtf8Error};
-
 use scrypt::errors::{InvalidOutputLen, InvalidParams};
+use std::{fmt, num::ParseIntError, string::FromUtf8Error};
 
 pub struct SqrlError {
     error_message: String,

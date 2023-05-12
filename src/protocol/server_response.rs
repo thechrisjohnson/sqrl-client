@@ -1,6 +1,5 @@
-use crate::error::SqrlError;
-
 use super::{get_or_error, parse_query_data, protocol_version::ProtocolVersion, PROTOCOL_VERSIONS};
+use crate::error::SqrlError;
 
 pub struct ServerResponse {
     pub ver: ProtocolVersion,

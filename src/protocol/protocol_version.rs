@@ -1,5 +1,6 @@
 use crate::error::SqrlError;
 use std::fmt;
+
 #[derive(Debug, PartialEq)]
 pub struct ProtocolVersion {
     versions: u128,
@@ -60,9 +61,13 @@ impl ProtocolVersion {
         } else {
             self.max_version
         };
+
+        let matches = self.versions & other.versions;
+
+        // Start from the highest match and work our way back
         let bit: u128 = 0b00000001 << min_max;
         for i in 0..min_max {
-            if self.versions & other.versions & (bit >> i) == bit >> i {
+            if matches & (bit >> i) == bit >> i {
                 return Ok(min_max - i + 1);
             }
         }
