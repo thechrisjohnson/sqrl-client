@@ -1,10 +1,11 @@
-use std::collections::HashMap;
-
-use crate::error::SqrlError;
-
 pub mod client_request;
 pub mod protocol_version;
 pub mod server_response;
+
+use crate::error::SqrlError;
+use base64::{prelude::BASE64_URL_SAFE_NO_PAD, Engine};
+use ed25519_dalek::{PublicKey, Signature};
+use std::collections::HashMap;
 
 // The list of supported versions
 pub const PROTOCOL_VERSIONS: &str = "1";
@@ -40,4 +41,46 @@ pub(crate) fn parse_query_data(query: &str) -> Result<HashMap<String, String>, S
         }
     }
     Ok(map)
+}
+
+pub(crate) fn decode_public_key(key: &str) -> Result<PublicKey, SqrlError> {
+    let bytes: Vec<u8>;
+    match BASE64_URL_SAFE_NO_PAD.decode(key) {
+        Ok(x) => bytes = x,
+        Err(_) => {
+            return Err(SqrlError::new(format!(
+                "Failed to decode base64 encoded public key {}",
+                key
+            )))
+        }
+    }
+
+    match PublicKey::from_bytes(&bytes) {
+        Ok(x) => Ok(x),
+        Err(e) => Err(SqrlError::new(format!(
+            "Failed to generate public key from {}: {}",
+            key, e
+        ))),
+    }
+}
+
+pub(crate) fn decode_signature(key: &str) -> Result<Signature, SqrlError> {
+    let bytes: Vec<u8>;
+    match BASE64_URL_SAFE_NO_PAD.decode(key) {
+        Ok(x) => bytes = x,
+        Err(_) => {
+            return Err(SqrlError::new(format!(
+                "Failed to decode base64 encoded signature {}",
+                key
+            )))
+        }
+    }
+
+    match Signature::from_bytes(&bytes) {
+        Ok(x) => Ok(x),
+        Err(e) => Err(SqrlError::new(format!(
+            "Failed to generate signature from {}: {}",
+            key, e
+        ))),
+    }
 }
