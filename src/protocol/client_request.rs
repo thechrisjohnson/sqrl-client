@@ -60,13 +60,14 @@ impl ClientRequest {
 
     pub fn encode(&self) -> String {
         let mut result = format!("client={}", self.client_params.encode());
-        result = result + &format!("&server={}", self.server);
-        result = result + &format!("&ids={}", BASE64_URL_SAFE_NO_PAD.encode(self.ids));
+        result += &format!("&server={}", self.server);
+        result += &format!("&ids={}", BASE64_URL_SAFE_NO_PAD.encode(self.ids));
+
         if let Some(pids) = &self.pids {
-            result = result + &format!("&pids={}", BASE64_URL_SAFE_NO_PAD.encode(pids));
+            result += &format!("&pids={}", BASE64_URL_SAFE_NO_PAD.encode(pids));
         }
         if let Some(urs) = &self.urs {
-            result = result + &format!("&urs={}", BASE64_URL_SAFE_NO_PAD.encode(urs));
+            result += &format!("&urs={}", BASE64_URL_SAFE_NO_PAD.encode(urs));
         }
 
         result
@@ -177,42 +178,41 @@ impl ClientParameters {
 
     pub fn encode(&self) -> String {
         let mut result = format!("ver={}", self.ver);
-        result = result + &format!("\ncmd={}", self.cmd);
-        result = result
-            + &format!(
-                "\nidk={}",
-                BASE64_URL_SAFE_NO_PAD.encode(self.idk.as_bytes())
-            );
+        result += &format!("\ncmd={}", self.cmd);
+        result += &format!(
+            "\nidk={}",
+            BASE64_URL_SAFE_NO_PAD.encode(self.idk.as_bytes())
+        );
 
         if let Some(opt) = &self.opt {
             let mut options = "".to_owned();
             for option in opt {
                 if options.is_empty() {
-                    options = options + &format!("{}", option);
+                    options += &format!("{}", option);
                 } else {
-                    options = options + &format!("~{}", option);
+                    options += &format!("~{}", option);
                 }
             }
 
-            result = result + &format!("\nopt={}", options);
+            result += &format!("\nopt={}", options);
         }
         if let Some(btn) = &self.btn {
-            result = result + &format!("\nbtn={}", btn);
+            result += &format!("\nbtn={}", btn);
         }
         if let Some(pidk) = &self.pidk {
-            result = result + &format!("\npidk={}", BASE64_URL_SAFE_NO_PAD.encode(pidk.as_bytes()));
+            result += &format!("\npidk={}", BASE64_URL_SAFE_NO_PAD.encode(pidk.as_bytes()));
         }
         if let Some(ins) = &self.ins {
-            result = result + &format!("\nins={}", ins);
+            result += &format!("\nins={}", ins);
         }
         if let Some(pins) = &self.pins {
-            result = result + &format!("\npins={}", pins);
+            result += &format!("\npins={}", pins);
         }
         if let Some(suk) = &self.suk {
-            result = result + &format!("\nsuk={}", suk);
+            result += &format!("\nsuk={}", suk);
         }
         if let Some(vuk) = &self.vuk {
-            result = result + &format!("\nvuk={}", vuk);
+            result += &format!("\nvuk={}", vuk);
         }
 
         BASE64_URL_SAFE_NO_PAD.encode(result)
