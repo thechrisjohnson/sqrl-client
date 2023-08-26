@@ -1,4 +1,4 @@
-use super::{common::xor, readable_vector::ReadableVector};
+use super::{readable_vector::ReadableVector, xor};
 use crate::error::SqrlError;
 use byteorder::{LittleEndian, WriteBytesExt};
 use rand::{prelude::StdRng, RngCore, SeedableRng};

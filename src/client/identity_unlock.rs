@@ -1,7 +1,7 @@
-use super::common::EMPTY_NONCE;
 use super::readable_vector::ReadableVector;
 use super::scrypt::{en_scrypt, mut_en_scrypt, ScryptConfig};
 use super::writable_datablock::WritableDataBlock;
+use super::EMPTY_NONCE;
 use super::{AesVerificationData, DataType, IdentityKey};
 use crate::error::SqrlError;
 use aes_gcm::aead::{Aead, Payload};
