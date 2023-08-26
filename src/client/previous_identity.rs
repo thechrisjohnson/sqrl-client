@@ -1,4 +1,4 @@
-use super::common::EMPTY_NONCE;
+use super::EMPTY_NONCE;
 use super::{
     readable_vector::ReadableVector, writable_datablock::WritableDataBlock, DataType, IdentityKey,
 };

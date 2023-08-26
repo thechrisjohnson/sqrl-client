@@ -1,4 +1,3 @@
-mod common;
 mod identity_information;
 mod identity_unlock;
 mod previous_identity;
@@ -7,7 +6,7 @@ pub(crate) mod scrypt;
 mod writable_datablock;
 
 use self::{
-    common::xor, identity_information::IdentityInformation, identity_unlock::IdentityUnlockData,
+    identity_information::IdentityInformation, identity_unlock::IdentityUnlockData,
     previous_identity::PreviousIdentityData, readable_vector::ReadableVector,
     writable_datablock::WritableDataBlock,
 };
@@ -646,6 +645,14 @@ fn convert_vec(mut input: Vec<u8>) -> VecDeque<u8> {
     }
 
     new_vec
+}
+
+pub(crate) const EMPTY_NONCE: [u8; 12] = [0; 12];
+
+pub(crate) fn xor(output: &mut [u8], other: &[u8]) {
+    for i in 0..output.len() {
+        output[i] ^= other[i];
+    }
 }
 
 #[cfg(test)]
