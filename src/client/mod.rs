@@ -10,10 +10,10 @@ use self::{
     previous_identity::PreviousIdentityData, readable_vector::ReadableVector,
     writable_datablock::WritableDataBlock,
 };
-use crate::error::SqrlError;
+use crate::{error::SqrlError, protocol::client_request::ClientRequest};
 use base64::{prelude::BASE64_URL_SAFE, Engine};
 use byteorder::{LittleEndian, WriteBytesExt};
-use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signature, Signer};
+use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signer};
 use hmac::{Hmac, Mac};
 use num_bigint::BigUint;
 use num_traits::{FromPrimitive, ToPrimitive};
@@ -148,8 +148,9 @@ impl SqrlClient {
         password: &str,
         url: &str,
         alternate_identity: Option<&str>,
-        request: &str,
-    ) -> Result<Signature, SqrlError> {
+        request: &mut ClientRequest,
+        previous_key_index: Option<usize>,
+    ) -> Result<(), SqrlError> {
         let parse = Url::parse(url)?;
         let host = match parse
             .host()
@@ -161,7 +162,28 @@ impl SqrlClient {
         };
 
         let keys = self.get_keys(password, &host, alternate_identity)?;
-        Ok(keys.sign(request.as_bytes()))
+
+        request.client_params.idk = keys.public;
+
+        if let Some(prev) = &self.previous_identities {
+            let key_index = previous_key_index.unwrap_or(0);
+            let identity_master_key = self
+                .user_configuration
+                .decrypt_identity_master_key(password)?;
+
+            if let Some(previous_key) =
+                prev.get_previous_identity(&identity_master_key, key_index)?
+            {
+                let previous_keypair = previous_key.get_keys(&host, alternate_identity)?;
+                request.client_params.pidk = Some(previous_keypair.public);
+                request.pids = Some(previous_keypair.sign(request.get_signed_string().as_bytes()));
+            }
+        }
+
+        // Sign last, as we need to set the current and previous key ids
+        request.ids = keys.sign(request.get_signed_string().as_bytes());
+
+        Ok(())
     }
 
     pub fn get_secret_index_key(
@@ -266,24 +288,11 @@ impl SqrlClient {
         hostname: &str,
         alternate_identity: Option<&str>,
     ) -> Result<Keypair, SqrlError> {
-        let data = match alternate_identity {
-            Some(id) => format!("{}{}", hostname, id),
-            None => hostname.to_owned(),
-        };
-
         let key = self
             .user_configuration
             .decrypt_identity_master_key(password)?;
-        let mut hmac = Hmac::<Sha256>::new_from_slice(&key)?;
-        hmac.update(data.as_bytes());
 
-        let private = SecretKey::from_bytes(&hmac.finalize().into_bytes())?;
-        let public: PublicKey = (&private).into();
-
-        Ok(Keypair {
-            public,
-            secret: private,
-        })
+        key.get_keys(hostname, alternate_identity)
     }
 
     fn from_binary(mut binary: VecDeque<u8>) -> Result<Self, SqrlError> {
@@ -470,6 +479,46 @@ impl DataType {
     }
 }
 
+trait GetKey {
+    fn get_keys(
+        &self,
+        hostname: &str,
+        alternate_identity: Option<&str>,
+    ) -> Result<Keypair, SqrlError>;
+}
+
+impl GetKey for IdentityKey {
+    fn get_keys(
+        &self,
+        hostname: &str,
+        alternate_identity: Option<&str>,
+    ) -> Result<Keypair, SqrlError> {
+        let data = match alternate_identity {
+            Some(id) => format!("{}{}", hostname, id),
+            None => hostname.to_owned(),
+        };
+
+        let mut hmac = Hmac::<Sha256>::new_from_slice(self)?;
+        hmac.update(data.as_bytes());
+
+        let private = SecretKey::from_bytes(&hmac.finalize().into_bytes())?;
+        let public: PublicKey = (&private).into();
+
+        Ok(Keypair {
+            public,
+            secret: private,
+        })
+    }
+}
+
+pub(crate) const EMPTY_NONCE: [u8; 12] = [0; 12];
+
+pub(crate) fn xor(output: &mut [u8], other: &[u8]) {
+    for i in 0..output.len() {
+        output[i] ^= other[i];
+    }
+}
+
 fn en_hash(input: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(input);
@@ -645,14 +694,6 @@ fn convert_vec(mut input: Vec<u8>) -> VecDeque<u8> {
     }
 
     new_vec
-}
-
-pub(crate) const EMPTY_NONCE: [u8; 12] = [0; 12];
-
-pub(crate) fn xor(output: &mut [u8], other: &[u8]) {
-    for i in 0..output.len() {
-        output[i] ^= other[i];
-    }
 }
 
 #[cfg(test)]
