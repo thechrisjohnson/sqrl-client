@@ -68,6 +68,19 @@ impl PreviousIdentityData {
         self.encrypt_previous_identities(unencrypted_keys, new_identity_master_key)
     }
 
+    pub(crate) fn get_previous_identity(
+        &self,
+        identity_master_key: &[u8],
+        index: usize,
+    ) -> Result<Option<IdentityKey>, SqrlError> {
+        let keys = self.decrypt_previous_identities(identity_master_key)?;
+        if index < keys.len() {
+            Ok(Some(keys[index]))
+        } else {
+            Ok(None)
+        }
+    }
+
     fn decrypt_previous_identities(
         &self,
         identity_master_key: &[u8],
