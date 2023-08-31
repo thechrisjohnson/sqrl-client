@@ -38,6 +38,8 @@ pub(crate) fn parse_query_data(query: &str) -> Result<HashMap<String, String>, S
     for token in query.split('&') {
         if let Some((key, value)) = token.split_once('=') {
             map.insert(key.to_owned(), value.to_owned());
+        } else {
+            return Err(SqrlError::new("Invalid query data".to_owned()));
         }
     }
     Ok(map)
@@ -83,4 +85,26 @@ pub(crate) fn decode_signature(key: &str) -> Result<Signature, SqrlError> {
             key, e
         ))),
     }
+}
+
+pub(crate) fn parse_newline_data(data: &str) -> Result<HashMap<String, String>, SqrlError> {
+    let mut map = HashMap::<String, String>::new();
+    for token in data.split('\n') {
+        if let Some((key, value)) = token.split_once('=') {
+            map.insert(key.to_owned(), value.trim().to_owned());
+        } else if !token.is_empty() {
+            return Err(SqrlError::new(format!("Invalid newline data {}", token)));
+        }
+    }
+
+    Ok(map)
+}
+
+pub(crate) fn encode_newline_data(map: &HashMap<String, String>) -> String {
+    let mut result = String::new();
+    for (key, value) in map.iter() {
+        result += &format!("\n{key}={value}");
+    }
+
+    result
 }

@@ -1,22 +1,23 @@
 use super::{
-    decode_public_key, decode_signature, get_or_error, parse_query_data,
-    protocol_version::ProtocolVersion, PROTOCOL_VERSIONS,
+    decode_public_key, decode_signature, get_or_error, parse_newline_data, parse_query_data,
+    protocol_version::ProtocolVersion, server_response::ServerResponse, PROTOCOL_VERSIONS,
 };
 use crate::error::SqrlError;
 use base64::{prelude::BASE64_URL_SAFE_NO_PAD, Engine};
 use ed25519_dalek::{PublicKey, Signature};
-use std::{collections::HashMap, fmt};
+use std::{fmt, str::FromStr};
+use url::Url;
 
 pub struct ClientRequest {
     pub client_params: ClientParameters,
-    pub server: String,
+    pub server: ServerData,
     pub ids: Signature,
     pub pids: Option<Signature>,
     pub urs: Option<String>,
 }
 
 impl ClientRequest {
-    pub fn new(client_params: ClientParameters, server: String, ids: Signature) -> Self {
+    pub fn new(client_params: ClientParameters, server: ServerData, ids: Signature) -> Self {
         ClientRequest {
             client_params,
             server,
@@ -34,7 +35,9 @@ impl ClientRequest {
             "Invalid client request: No client parameters",
         )?;
         let client_params = ClientParameters::from_base64(&client_parameters_string)?;
-        let server = get_or_error(&map, "server", "Invalid client request: No server value")?;
+        let server_string =
+            get_or_error(&map, "server", "Invalid client request: No server value")?;
+        let server = ServerData::from_base64(&server_string)?;
         let ids_string = get_or_error(&map, "ids", "Invalid client request: No ids value")?;
         let ids = decode_signature(&ids_string)?;
         let pids = match map.get("pids") {
@@ -43,11 +46,6 @@ impl ClientRequest {
         };
 
         let urs = map.get("urs").map(|x| x.to_string());
-
-        // TODO: Should we validate when we load?
-        // Also, validate that the signature is correct
-        // let signed_portion = format!("{}{}", &client_parameters_string, &server);
-        // client_params.idk.verify(signed_portion.as_bytes(), &ids)?;
 
         Ok(ClientRequest {
             client_params,
@@ -110,14 +108,7 @@ impl ClientParameters {
 
     pub fn from_base64(base64_string: &str) -> Result<Self, SqrlError> {
         let query_string = String::from_utf8(BASE64_URL_SAFE_NO_PAD.decode(base64_string)?)?;
-
-        // Client parameters use a newline
-        let mut map = HashMap::<String, String>::new();
-        for token in query_string.split('\n') {
-            if let Some((key, value)) = token.split_once('=') {
-                map.insert(key.to_owned(), value.trim().to_owned());
-            }
-        }
+        let map = parse_newline_data(&query_string)?;
 
         // Validate the protocol version is supported
         let ver_string = get_or_error(&map, "ver", "Invalid client request: No version number")?;
@@ -283,6 +274,38 @@ impl From<String> for ClientOption {
             "cps" => ClientOption::ClientProvidedSession,
             "suk" => ClientOption::ServerUnlockKey,
             _ => panic!("Not this!"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ServerData {
+    Url { url: String },
+    ServerResponse { server_response: ServerResponse },
+}
+
+impl ServerData {
+    pub fn from_base64(base64_string: &str) -> Result<Self, SqrlError> {
+        let data = String::from_utf8(BASE64_URL_SAFE_NO_PAD.decode(base64_string)?)?;
+        match Url::parse(&data) {
+            Ok(_) => Ok(ServerData::Url { url: data }),
+            Err(_) => {
+                let server_response = ServerResponse::from_str(&data)?;
+                Ok(ServerData::ServerResponse { server_response })
+            }
+        }
+    }
+}
+
+impl fmt::Display for ServerData {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ServerData::Url { url } => {
+                write!(f, "{}", BASE64_URL_SAFE_NO_PAD.encode(url.as_bytes()))
+            }
+            ServerData::ServerResponse { server_response } => {
+                write!(f, "{}", server_response.to_base64())
+            }
         }
     }
 }
