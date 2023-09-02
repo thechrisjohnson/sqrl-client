@@ -287,12 +287,15 @@ pub enum ServerData {
 impl ServerData {
     pub fn from_base64(base64_string: &str) -> Result<Self, SqrlError> {
         let data = String::from_utf8(BASE64_URL_SAFE_NO_PAD.decode(base64_string)?)?;
-        match Url::parse(&data) {
-            Ok(_) => Ok(ServerData::Url { url: data }),
-            Err(_) => {
-                let server_response = ServerResponse::from_str(&data)?;
-                Ok(ServerData::ServerResponse { server_response })
+        if let Ok(parsed) = Url::parse(&data) {
+            if parsed.scheme() == "sqrl" {
+                return Ok(ServerData::Url { url: data });
             }
+        }
+
+        match ServerResponse::from_str(&data) {
+            Ok(server_response) => Ok(ServerData::ServerResponse { server_response }),
+            Err(_) => Err(SqrlError::new(format!("Invalid server data: {}", &data)))
         }
     }
 }
@@ -316,6 +319,9 @@ mod tests {
 
     const TEST_CLIENT_REQUEST: &str = "client=dmVyPTENCmNtZD1xdWVyeQ0KaWRrPWlnZ2N1X2UtdFdxM3NvZ2FhMmFBRENzeFJaRUQ5b245SDcxNlRBeVBSMHcNCnBpZGs9RTZRczJnWDdXLVB3aTlZM0tBbWJrdVlqTFNXWEN0S3lCY3ltV2xvSEF1bw0Kb3B0PWNwc35zdWsNCg&server=c3FybDovL3Nxcmwuc3RldmUuY29tL2NsaS5zcXJsP3g9MSZudXQ9ZTd3ZTZ3Q3RvU3hsJmNhbj1hSFIwY0hNNkx5OXNiMk5oYkdodmMzUXZaR1Z0Ynk1MFpYTjA&ids=hcXWTPx3EgP9R_AjtoCIrie_YgZxVD72nd5_pjMOnhUEYmhdjLUYs3jjcJT_GQuzNKXyAwY1ns1R6QJn1YKzCA";
     const TEST_CLIENT_PARAMS: &str = "dmVyPTENCmNtZD1xdWVyeQ0KaWRrPWlnZ2N1X2UtdFdxM3NvZ2FhMmFBRENzeFJaRUQ5b245SDcxNlRBeVBSMHcNCnBpZGs9RTZRczJnWDdXLVB3aTlZM0tBbWJrdVlqTFNXWEN0S3lCY3ltV2xvSEF1bw0Kb3B0PWNwc35zdWsNCg";
+    const TEST_SERVER_RESPONSE: &str = "dmVyPTENCm51dD0xV005bGZGMVNULXoNCnRpZj01DQpxcnk9L2NsaS5zcXJsP251dD0xV005bGZGMVNULXoNCnN1az1CTUZEbTdiUGxzUW9qdUpzb0RUdmxTMU1jbndnU2N2a3RGODR2TGpzY0drDQo";
+    const TEST_SQRL_URL: &str = "c3FybDovL3Rlc3R1cmwuY29t";
+    const TEST_INVALID_URL: &str = "aHR0cHM6Ly9nb29nbGUuY29t";
 
     #[test]
     fn client_request_validate_example() {
@@ -366,5 +372,35 @@ mod tests {
             ),
             None => assert!(false),
         }
+    }
+
+    #[test]
+    fn server_data_parse_sqrl_url() {
+        let data = ServerData::from_base64(TEST_SQRL_URL).unwrap();
+        match data {
+            ServerData::Url { url } => assert_eq!(url, "sqrl://testurl.com"),
+            ServerData::ServerResponse { server_response: _ } => {
+                assert!(false, "Did not expect a ServerResponse");
+            }
+        };
+    }
+
+    #[test]
+    fn server_data_parse_nonsqrl_url() {
+        let result = ServerData::from_base64(TEST_INVALID_URL);
+        if let Ok(_) = result {
+            assert!(false, "Got back a real result");
+        }
+    }
+
+    #[test]
+    fn server_data_parse_server_data() {
+        let data = ServerData::from_base64(TEST_SERVER_RESPONSE).unwrap();
+        match data {
+            ServerData::Url { url: _ } => assert!(false, "Did not expect a url"),
+            ServerData::ServerResponse { server_response } => {
+                assert_eq!(server_response.nut, "1WM9lfF1ST-z");
+            }
+        };
     }
 }
