@@ -295,7 +295,7 @@ impl ServerData {
 
         match ServerResponse::from_str(&data) {
             Ok(server_response) => Ok(ServerData::ServerResponse { server_response }),
-            Err(_) => Err(SqrlError::new(format!("Invalid server data: {}", &data)))
+            Err(_) => Err(SqrlError::new(format!("Invalid server data: {}", &data))),
         }
     }
 }
