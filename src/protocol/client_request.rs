@@ -5,7 +5,7 @@ use super::{
 use crate::error::SqrlError;
 use base64::{prelude::BASE64_URL_SAFE_NO_PAD, Engine};
 use ed25519_dalek::{PublicKey, Signature};
-use std::{fmt, str::FromStr};
+use std::{convert::TryFrom, fmt, str::FromStr};
 use url::Url;
 
 pub struct ClientRequest {
@@ -56,7 +56,7 @@ impl ClientRequest {
         })
     }
 
-    pub fn encode(&self) -> String {
+    pub fn to_query_string(&self) -> String {
         let mut result = format!("client={}", self.client_params.encode());
         result += &format!("&server={}", self.server);
         result += &format!("&ids={}", BASE64_URL_SAFE_NO_PAD.encode(self.ids));
@@ -72,7 +72,11 @@ impl ClientRequest {
     }
 
     pub fn get_signed_string(&self) -> String {
-        format!("{}{}", self.client_params.encode(), &self.server)
+        format!(
+            "{}{}",
+            self.client_params.encode(),
+            &self.server.to_base64()
+        )
     }
 }
 
@@ -138,13 +142,7 @@ impl ClientParameters {
         };
 
         let opt = match map.get("opt") {
-            Some(x) => {
-                let mut options: Vec<ClientOption> = Vec::new();
-                for option in x.split('~') {
-                    options.push(ClientOption::from(option.to_string()))
-                }
-                Some(options)
-            }
+            Some(x) => Some(ClientOption::from_option_string(x)?),
             None => None,
         };
 
@@ -176,16 +174,7 @@ impl ClientParameters {
         );
 
         if let Some(opt) = &self.opt {
-            let mut options = "".to_owned();
-            for option in opt {
-                if options.is_empty() {
-                    options += &format!("{}", option);
-                } else {
-                    options += &format!("~{}", option);
-                }
-            }
-
-            result += &format!("\nopt={}", options);
+            result += &format!("\nopt={}", ClientOption::to_option_string(opt));
         }
         if let Some(btn) = &self.btn {
             result += &format!("\nbtn={}", btn);
@@ -253,6 +242,30 @@ pub enum ClientOption {
     ServerUnlockKey,
 }
 
+impl ClientOption {
+    fn from_option_string(opt: &str) -> Result<Vec<Self>, SqrlError> {
+        let mut options: Vec<ClientOption> = Vec::new();
+        for option in opt.split('~') {
+            options.push(ClientOption::try_from(option)?)
+        }
+
+        Ok(options)
+    }
+
+    fn to_option_string(opt: &Vec<Self>) -> String {
+        let mut options = "".to_owned();
+        for option in opt {
+            if options.is_empty() {
+                options += &format!("{}", option);
+            } else {
+                options += &format!("~{}", option);
+            }
+        }
+
+        options
+    }
+}
+
 impl fmt::Display for ClientOption {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -265,15 +278,17 @@ impl fmt::Display for ClientOption {
     }
 }
 
-impl From<String> for ClientOption {
-    fn from(value: String) -> Self {
-        match value.as_str() {
-            "noiptest" => ClientOption::NoIPTest,
-            "sqrlonly" => ClientOption::SQRLOnly,
-            "hardlock" => ClientOption::Hardlock,
-            "cps" => ClientOption::ClientProvidedSession,
-            "suk" => ClientOption::ServerUnlockKey,
-            _ => panic!("Not this!"),
+impl TryFrom<&str> for ClientOption {
+    type Error = SqrlError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "noiptest" => Ok(ClientOption::NoIPTest),
+            "sqrlonly" => Ok(ClientOption::SQRLOnly),
+            "hardlock" => Ok(ClientOption::Hardlock),
+            "cps" => Ok(ClientOption::ClientProvidedSession),
+            "suk" => Ok(ClientOption::ServerUnlockKey),
+            _ => Err(SqrlError::new(format!("Invalid client option {}", value))),
         }
     }
 }
@@ -298,16 +313,23 @@ impl ServerData {
             Err(_) => Err(SqrlError::new(format!("Invalid server data: {}", &data))),
         }
     }
+
+    pub fn to_base64(&self) -> String {
+        match self {
+            ServerData::Url { url } => BASE64_URL_SAFE_NO_PAD.encode(url.as_bytes()),
+            ServerData::ServerResponse { server_response } => server_response.to_base64(),
+        }
+    }
 }
 
 impl fmt::Display for ServerData {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ServerData::Url { url } => {
-                write!(f, "{}", BASE64_URL_SAFE_NO_PAD.encode(url.as_bytes()))
+                write!(f, "{}", url)
             }
             ServerData::ServerResponse { server_response } => {
-                write!(f, "{}", server_response.to_base64())
+                write!(f, "{}", server_response)
             }
         }
     }
