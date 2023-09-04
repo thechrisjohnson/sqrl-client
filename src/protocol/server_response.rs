@@ -4,7 +4,7 @@ use super::{
 };
 use crate::error::SqrlError;
 use base64::{prelude::BASE64_URL_SAFE_NO_PAD, Engine};
-use std::{collections::HashMap, str::FromStr, fmt};
+use std::{collections::HashMap, fmt, str::FromStr};
 
 const VER_KEY: &str = "ver";
 const NUT_KEY: &str = "nut";
@@ -190,13 +190,42 @@ impl TIFValue {
 
 #[cfg(test)]
 mod tests {
+    use rand::{distributions::Alphanumeric, thread_rng, Rng};
+
     use super::*;
 
     const TEST_SERVER_RESPONSE: &str = "dmVyPTENCm51dD0xV005bGZGMVNULXoNCnRpZj01DQpxcnk9L2NsaS5zcXJsP251dD0xV005bGZGMVNULXoNCnN1az1CTUZEbTdiUGxzUW9qdUpzb0RUdmxTMU1jbndnU2N2a3RGODR2TGpzY0drDQo";
 
     #[test]
     fn server_response_validate_example() {
-        ServerResponse::from_base64(TEST_SERVER_RESPONSE).unwrap();
+        let response = ServerResponse::from_base64(TEST_SERVER_RESPONSE).unwrap();
+        assert_eq!(response.ver.to_string(), "1");
+        assert_eq!(response.nut, "1WM9lfF1ST-z");
+        assert_eq!(response.qry, "/cli.sqrl?nut=1WM9lfF1ST-z");
+        assert_eq!(
+            response.suk.unwrap(),
+            "BMFDm7bPlsQojuJsoDTvlS1McnwgScvktF84vLjscGk"
+        )
+    }
+
+    #[test]
+    fn server_response_encode_decode() {
+        let nut: String = thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(30)
+            .map(char::from)
+            .collect();
+        let qry: String = thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(30)
+            .map(char::from)
+            .collect();
+        let tif: u16 = thread_rng().gen_range(0..1023);
+
+        let initial_response = ServerResponse::new(nut, TIFValue::from_u16(tif), qry);
+        let decoded_response = ServerResponse::from_base64(&initial_response.to_base64()).unwrap();
+
+        assert_eq!(initial_response, decoded_response);
     }
 
     #[test]
