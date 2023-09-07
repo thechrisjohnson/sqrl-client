@@ -2,11 +2,10 @@ use super::{
     decode_public_key, decode_signature, get_or_error, parse_newline_data, parse_query_data,
     protocol_version::ProtocolVersion, server_response::ServerResponse, PROTOCOL_VERSIONS,
 };
-use crate::error::SqrlError;
+use crate::{common::SqrlUrl, error::SqrlError};
 use base64::{prelude::BASE64_URL_SAFE_NO_PAD, Engine};
 use ed25519_dalek::{PublicKey, Signature};
 use std::{convert::TryFrom, fmt, str::FromStr};
-use url::Url;
 
 pub struct ClientRequest {
     pub client_params: ClientParameters,
@@ -295,17 +294,15 @@ impl TryFrom<&str> for ClientOption {
 
 #[derive(Debug, PartialEq)]
 pub enum ServerData {
-    Url { url: String },
+    Url { url: SqrlUrl },
     ServerResponse { server_response: ServerResponse },
 }
 
 impl ServerData {
     pub fn from_base64(base64_string: &str) -> Result<Self, SqrlError> {
         let data = String::from_utf8(BASE64_URL_SAFE_NO_PAD.decode(base64_string)?)?;
-        if let Ok(parsed) = Url::parse(&data) {
-            if parsed.scheme() == "sqrl" {
-                return Ok(ServerData::Url { url: data });
-            }
+        if let Ok(parsed) = SqrlUrl::parse(&data) {
+            return Ok(ServerData::Url { url: parsed });
         }
 
         match ServerResponse::from_str(&data) {
@@ -316,7 +313,7 @@ impl ServerData {
 
     pub fn to_base64(&self) -> String {
         match self {
-            ServerData::Url { url } => BASE64_URL_SAFE_NO_PAD.encode(url.as_bytes()),
+            ServerData::Url { url } => BASE64_URL_SAFE_NO_PAD.encode(url.to_string().as_bytes()),
             ServerData::ServerResponse { server_response } => server_response.to_base64(),
         }
     }
@@ -400,7 +397,7 @@ mod tests {
     fn server_data_parse_sqrl_url() {
         let data = ServerData::from_base64(TEST_SQRL_URL).unwrap();
         match data {
-            ServerData::Url { url } => assert_eq!(url, "sqrl://testurl.com"),
+            ServerData::Url { url } => assert_eq!(url.to_string(), "sqrl://testurl.com"),
             ServerData::ServerResponse { server_response: _ } => {
                 assert!(false, "Did not expect a ServerResponse");
             }
