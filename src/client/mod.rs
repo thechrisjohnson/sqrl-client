@@ -10,7 +10,7 @@ use self::{
     previous_identity::PreviousIdentityData, readable_vector::ReadableVector,
     writable_datablock::WritableDataBlock,
 };
-use crate::{error::SqrlError, protocol::client_request::ClientRequest, common::SqrlUrl};
+use crate::{common::SqrlUrl, error::SqrlError, protocol::client_request::ClientRequest};
 use base64::{prelude::BASE64_URL_SAFE, Engine};
 use byteorder::{LittleEndian, WriteBytesExt};
 use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signer};
@@ -164,7 +164,8 @@ impl SqrlClient {
             if let Some(previous_key) =
                 prev.get_previous_identity(&identity_master_key, key_index)?
             {
-                let previous_keypair = previous_key.get_keys(&sqrl_url.get_auth_domain(), alternate_identity)?;
+                let previous_keypair =
+                    previous_key.get_keys(&sqrl_url.get_auth_domain(), alternate_identity)?;
                 request.client_params.pidk = Some(previous_keypair.public);
                 request.pids = Some(previous_keypair.sign(request.get_signed_string().as_bytes()));
             }
@@ -179,11 +180,15 @@ impl SqrlClient {
     pub fn get_secret_index_key(
         &self,
         password: &str,
-        hostname: &str,
+        url: &str,
         alternate_identity: Option<&str>,
         secret_index: &str,
     ) -> Result<String, SqrlError> {
-        let keys = self.get_keys(password, hostname, alternate_identity)?;
+        let keys = self.get_keys(
+            password,
+            &SqrlUrl::parse(url)?.get_auth_domain(),
+            alternate_identity,
+        )?;
         let hash = en_hash(keys.secret.as_bytes());
         let mut hmac = Hmac::<Sha256>::new_from_slice(&hash)?;
         hmac.update(secret_index.as_bytes());
@@ -254,10 +259,14 @@ impl SqrlClient {
     pub fn get_public_identity(
         &self,
         password: &str,
-        hostname: &str,
+        url: &str,
         alternate_identity: Option<&str>,
     ) -> Result<PublicKey, SqrlError> {
-        let keys = self.get_keys(password, hostname, alternate_identity)?;
+        let keys = self.get_keys(
+            password,
+            &SqrlUrl::parse(url)?.get_auth_domain(),
+            alternate_identity,
+        )?;
         Ok(keys.public)
     }
 
@@ -470,11 +479,7 @@ impl DataType {
 }
 
 trait GetKey {
-    fn get_keys(
-        &self,
-        hostname: &str,
-        alternate_identity: Option<&str>,
-    ) -> Result<Keypair, SqrlError>;
+    fn get_keys(&self, url: &str, alternate_identity: Option<&str>) -> Result<Keypair, SqrlError>;
 }
 
 impl GetKey for IdentityKey {
@@ -488,7 +493,7 @@ impl GetKey for IdentityKey {
             Some(id) => {
                 holder = format!("{}{}", auth_domain, id);
                 &holder
-            },
+            }
             None => auth_domain,
         };
 
