@@ -190,9 +190,8 @@ impl TIFValue {
 
 #[cfg(test)]
 mod tests {
-    use rand::{distributions::Alphanumeric, thread_rng, Rng};
-
     use super::*;
+    use rand::{distributions::Alphanumeric, thread_rng, Rng};
 
     const TEST_SERVER_RESPONSE: &str = "dmVyPTENCm51dD0xV005bGZGMVNULXoNCnRpZj01DQpxcnk9L2NsaS5zcXJsP251dD0xV005bGZGMVNULXoNCnN1az1CTUZEbTdiUGxzUW9qdUpzb0RUdmxTMU1jbndnU2N2a3RGODR2TGpzY0drDQo";
 

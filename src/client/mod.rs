@@ -10,7 +10,7 @@ use self::{
     previous_identity::PreviousIdentityData, readable_vector::ReadableVector,
     writable_datablock::WritableDataBlock,
 };
-use crate::{error::SqrlError, protocol::client_request::ClientRequest};
+use crate::{error::SqrlError, protocol::client_request::ClientRequest, common::SqrlUrl};
 use base64::{prelude::BASE64_URL_SAFE, Engine};
 use byteorder::{LittleEndian, WriteBytesExt};
 use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signer};
@@ -20,7 +20,6 @@ use num_traits::{FromPrimitive, ToPrimitive};
 use rand::{prelude::StdRng, RngCore, SeedableRng};
 use sha2::{Digest, Sha256};
 use std::{collections::VecDeque, fs::File, io::Write};
-use url::{Host, Url};
 
 pub type PublicIdentity = [u8; 64];
 pub type AesVerificationData = [u8; 16];
@@ -151,17 +150,8 @@ impl SqrlClient {
         request: &mut ClientRequest,
         previous_key_index: Option<usize>,
     ) -> Result<(), SqrlError> {
-        let parse = Url::parse(url)?;
-        let host = match parse
-            .host()
-            .ok_or(SqrlError::new(format!("Invalid host in url: {}", url)))?
-        {
-            Host::Domain(host) => host.to_owned(),
-            Host::Ipv4(host) => host.to_string(),
-            Host::Ipv6(host) => host.to_string(),
-        };
-
-        let keys = self.get_keys(password, &host, alternate_identity)?;
+        let sqrl_url = SqrlUrl::parse(url)?;
+        let keys = self.get_keys(password, &sqrl_url.get_auth_domain(), alternate_identity)?;
 
         request.client_params.idk = keys.public;
 
@@ -174,7 +164,7 @@ impl SqrlClient {
             if let Some(previous_key) =
                 prev.get_previous_identity(&identity_master_key, key_index)?
             {
-                let previous_keypair = previous_key.get_keys(&host, alternate_identity)?;
+                let previous_keypair = previous_key.get_keys(&sqrl_url.get_auth_domain(), alternate_identity)?;
                 request.client_params.pidk = Some(previous_keypair.public);
                 request.pids = Some(previous_keypair.sign(request.get_signed_string().as_bytes()));
             }
@@ -285,14 +275,14 @@ impl SqrlClient {
     fn get_keys(
         &self,
         password: &str,
-        hostname: &str,
+        auth_domain: &str,
         alternate_identity: Option<&str>,
     ) -> Result<Keypair, SqrlError> {
         let key = self
             .user_configuration
             .decrypt_identity_master_key(password)?;
 
-        key.get_keys(hostname, alternate_identity)
+        key.get_keys(auth_domain, alternate_identity)
     }
 
     fn from_binary(mut binary: VecDeque<u8>) -> Result<Self, SqrlError> {
@@ -490,12 +480,16 @@ trait GetKey {
 impl GetKey for IdentityKey {
     fn get_keys(
         &self,
-        hostname: &str,
+        auth_domain: &str,
         alternate_identity: Option<&str>,
     ) -> Result<Keypair, SqrlError> {
+        let holder;
         let data = match alternate_identity {
-            Some(id) => format!("{}{}", hostname, id),
-            None => hostname.to_owned(),
+            Some(id) => {
+                holder = format!("{}{}", auth_domain, id);
+                &holder
+            },
+            None => auth_domain,
         };
 
         let mut hmac = Hmac::<Sha256>::new_from_slice(self)?;
