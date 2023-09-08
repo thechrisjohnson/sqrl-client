@@ -10,16 +10,22 @@ use self::{
     previous_identity::PreviousIdentityData, readable_vector::ReadableVector,
     writable_datablock::WritableDataBlock,
 };
-use crate::{common::SqrlUrl, error::SqrlError, protocol::client_request::ClientRequest};
+use crate::{
+    common::{IdentityUnlockKeys, SqrlUrl},
+    error::SqrlError,
+    protocol::client_request::ClientRequest,
+};
+use aes_gcm::aead::OsRng;
 use base64::{prelude::BASE64_URL_SAFE, Engine};
 use byteorder::{LittleEndian, WriteBytesExt};
 use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signer};
 use hmac::{Hmac, Mac};
 use num_bigint::BigUint;
 use num_traits::{FromPrimitive, ToPrimitive};
-use rand::{prelude::StdRng, RngCore, SeedableRng};
+use rand::RngCore;
 use sha2::{Digest, Sha256};
 use std::{collections::VecDeque, fs::File, io::Write};
+use x25519_dalek::StaticSecret;
 
 pub type PublicIdentity = [u8; 64];
 pub type AesVerificationData = [u8; 16];
@@ -78,15 +84,14 @@ pub struct SqrlClient {
 impl SqrlClient {
     pub fn new(password: &str) -> Result<(Self, String), SqrlError> {
         // Generate a random identity unlock key base
-        let mut random = StdRng::from_entropy();
         let mut identity_unlock_key: [u8; 32] = [0; 32];
-        random.fill_bytes(&mut identity_unlock_key);
+        OsRng.fill_bytes(&mut identity_unlock_key);
 
         // From the identity unlock key, generate the identity lock key and identity master key
         // NOTE: The identity_lock_key is the "public key" for an ECDHKA ED25519 where the private key is the identity unlock key
         let identity_master_key = en_hash(&identity_unlock_key);
-        let secret_key = SecretKey::from_bytes(&identity_unlock_key)?;
-        let public_key: PublicKey = (&secret_key).into();
+        let secret_key = StaticSecret::from(identity_unlock_key);
+        let public_key = x25519_dalek::PublicKey::from(&secret_key);
         let identity_lock_key = public_key.to_bytes();
 
         // Encrypt the identity unlock key with a random rescue code to return
@@ -116,8 +121,8 @@ impl SqrlClient {
         // From the identity unlock key, generate the identity lock key and identity master key
         // NOTE: The identity_lock_key is the "public key" for an ECDHKA ED25519 where the private key is the identity unlock key
         let identity_master_key = en_hash(&identity_unlock_key);
-        let secret_key = SecretKey::from_bytes(&identity_unlock_key)?;
-        let public_key: PublicKey = (&secret_key).into();
+        let secret_key = StaticSecret::from(identity_unlock_key);
+        let public_key = x25519_dalek::PublicKey::from(&secret_key);
         let identity_lock_key = public_key.to_bytes();
 
         // Encrypt the identity master key and identity lock key in
@@ -206,14 +211,13 @@ impl SqrlClient {
             .decrypt_identity_unlock_key(rescue_code)?;
 
         // Generate a new identity unlock key
-        let mut random = StdRng::from_entropy();
         let mut new_identity_unlock_key: [u8; 32] = [0; 32];
-        random.fill_bytes(&mut new_identity_unlock_key);
+        OsRng.fill_bytes(&mut new_identity_unlock_key);
 
         // From the identity unlock key, generate the new identity lock key and identity master key
         let new_identity_master_key = en_hash(&new_identity_unlock_key);
-        let secret_key = SecretKey::from_bytes(&new_identity_unlock_key)?;
-        let public_key: PublicKey = (&secret_key).into();
+        let secret_key = StaticSecret::from(new_identity_unlock_key);
+        let public_key = x25519_dalek::PublicKey::from(&secret_key);
         let new_identity_lock_key = public_key.to_bytes();
 
         // Encrypt the identity unlock key with a random rescue code to return
@@ -248,14 +252,6 @@ impl SqrlClient {
         Ok(new_rescue_code)
     }
 
-    // TODO: Actually lock identity
-    pub fn lock_identity(&self, password: &str) -> Result<(), SqrlError> {
-        let _ = self
-            .user_configuration
-            .decrypt_identity_lock_key(password)?;
-        Ok(())
-    }
-
     pub fn get_public_identity(
         &self,
         password: &str,
@@ -270,15 +266,14 @@ impl SqrlClient {
         Ok(keys.public)
     }
 
-    pub fn generate_server_unlock_key(
+    pub fn generate_server_unlock_and_verify_unlock_keys(
         &self,
         password: &str,
         _hostname: &str,
         _alternate_identity: Option<&str>,
-    ) -> Result<(), SqrlError> {
+    ) -> Result<IdentityUnlockKeys, SqrlError> {
         self.user_configuration
-            .generate_server_unlock_key(password)?;
-        Ok(())
+            .generate_server_unlock_and_verify_unlock_keys(password)
     }
 
     fn get_keys(

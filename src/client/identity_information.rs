@@ -2,16 +2,18 @@ use super::{
     readable_vector::ReadableVector,
     scrypt::{en_scrypt, mut_en_scrypt, ScryptConfig},
     writable_datablock::WritableDataBlock,
-    AesVerificationData, DataType, IdentityKey,
+    AesVerificationData, DataType, IdentityKey, IdentityUnlockKeys,
 };
 use crate::error::SqrlError;
 use aes_gcm::{
-    aead::{AeadMut, Payload},
+    aead::{AeadMut, OsRng, Payload},
     Aes256Gcm, KeyInit,
 };
 use byteorder::{LittleEndian, WriteBytesExt};
+use ed25519_dalek::{PublicKey, SecretKey};
 use rand::{prelude::StdRng, RngCore, SeedableRng};
 use std::{collections::VecDeque, convert::TryInto, io::Write};
+use x25519_dalek::EphemeralSecret;
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct IdentityInformation {
@@ -76,12 +78,12 @@ impl IdentityInformation {
     pub(crate) fn decrypt_identity_lock_key(
         &self,
         password: &str,
-    ) -> Result<IdentityKey, SqrlError> {
+    ) -> Result<x25519_dalek::PublicKey, SqrlError> {
         let mut user_unlock_key = [0; 32];
         let decrypted_data = self.decrypt(password)?;
         user_unlock_key[..32].copy_from_slice(&decrypted_data[32..64]);
 
-        Ok(user_unlock_key)
+        Ok(x25519_dalek::PublicKey::from(user_unlock_key))
     }
 
     pub(crate) fn verify(&self, password: &str) -> Result<(), SqrlError> {
@@ -127,10 +129,27 @@ impl IdentityInformation {
         Ok(())
     }
 
-    pub(crate) fn generate_server_unlock_key(&self, password: &str) -> Result<[u8; 32], SqrlError> {
-        let identity_lock = self.decrypt_identity_lock_key(password)?;
-        //TODO: Finish this
-        Ok(identity_lock)
+    pub(crate) fn generate_server_unlock_and_verify_unlock_keys(
+        &self,
+        password: &str,
+    ) -> Result<IdentityUnlockKeys, SqrlError> {
+        // Get the identity lock key so we confirm the password first
+        let identity_lock_key = self.decrypt_identity_lock_key(password)?;
+
+        // Generate the random secret key and the server unlock key (the matching public key)
+        let random_key = EphemeralSecret::random_from_rng(OsRng);
+        let server_unlock_key = x25519_dalek::PublicKey::from(&random_key);
+
+        // Diffie-Hellman the random key with the identity lock key
+        // Take that shared secret key and use it to generate an ed25519 key pair
+        let shared_secret = random_key.diffie_hellman(&identity_lock_key);
+        let secret_key = SecretKey::from_bytes(shared_secret.as_bytes())?;
+        let verify_unlock_key = PublicKey::from(&secret_key);
+
+        Ok(IdentityUnlockKeys::new(
+            server_unlock_key,
+            verify_unlock_key,
+        ))
     }
 
     fn decrypt(&self, password: &str) -> Result<[u8; 64], SqrlError> {

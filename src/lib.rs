@@ -15,3 +15,4 @@ extern crate rand;
 extern crate scrypt;
 extern crate sha2;
 extern crate url;
+extern crate x25519_dalek;
