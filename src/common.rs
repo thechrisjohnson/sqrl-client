@@ -1,4 +1,5 @@
 use crate::error::SqrlError;
+use ed25519_dalek::PublicKey;
 use std::fmt;
 use url::Url;
 
@@ -45,6 +46,20 @@ impl SqrlUrl {
 impl fmt::Display for SqrlUrl {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.url)
+    }
+}
+
+pub struct IdentityUnlockKeys {
+    pub server_unlock_key: x25519_dalek::PublicKey,
+    pub verify_unlock_key: PublicKey,
+}
+
+impl IdentityUnlockKeys {
+    pub fn new(server_unlock_key: x25519_dalek::PublicKey, verify_unlock_key: PublicKey) -> Self {
+        IdentityUnlockKeys {
+            server_unlock_key,
+            verify_unlock_key,
+        }
     }
 }
 

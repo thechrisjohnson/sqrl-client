@@ -116,6 +116,7 @@ impl IdentityUnlockData {
         Ok(result)
     }
 }
+
 impl WritableDataBlock for IdentityUnlockData {
     fn get_type(&self) -> DataType {
         DataType::RescueCode
