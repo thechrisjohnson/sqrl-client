@@ -1,8 +1,9 @@
 use super::{
+    config_options_to_u16,
     readable_vector::ReadableVector,
     scrypt::{en_scrypt, mut_en_scrypt, ScryptConfig},
     writable_datablock::WritableDataBlock,
-    AesVerificationData, DataType, IdentityKey, IdentityUnlockKeys,
+    AesVerificationData, ConfigOptions, DataType, IdentityKey, IdentityUnlockKeys,
 };
 use crate::{common::en_hash, error::SqrlError};
 use aes_gcm::{
@@ -19,7 +20,7 @@ use x25519_dalek::{EphemeralSecret, StaticSecret};
 pub(crate) struct IdentityInformation {
     aes_gcm_iv: [u8; 12],
     scrypt_config: ScryptConfig,
-    option_flags: u16,
+    option_flags: Vec<ConfigOptions>,
     hint_length: u8,
     pw_verify_sec: u8,
     idle_timeout_min: u16,
@@ -37,7 +38,7 @@ impl IdentityInformation {
         let mut config = IdentityInformation {
             aes_gcm_iv: [0; 12],
             scrypt_config: ScryptConfig::new(),
-            option_flags: 0,
+            option_flags: Vec::new(),
             hint_length: 0,
             pw_verify_sec: 5,
             idle_timeout_min: 0,
@@ -71,7 +72,7 @@ impl IdentityInformation {
         result.write_u16::<LittleEndian>(45)?;
         result.write_all(&self.aes_gcm_iv)?;
         self.scrypt_config.to_binary(&mut result)?;
-        result.write_u16::<LittleEndian>(self.option_flags)?;
+        result.write_u16::<LittleEndian>(config_options_to_u16(&self.option_flags))?;
         result.push(self.hint_length);
         result.push(self.pw_verify_sec);
         result.write_u16::<LittleEndian>(self.idle_timeout_min)?;
@@ -175,6 +176,36 @@ impl IdentityInformation {
         )
     }
 
+    pub(crate) fn update_setings(
+        &mut self,
+        password: &str,
+        option_flags: Option<Vec<ConfigOptions>>,
+        hint_length: Option<u8>,
+        pw_verify_sec: Option<u8>,
+        idle_timeout_min: Option<u16>,
+    ) -> Result<(), SqrlError> {
+        let decryted = self.decrypt(password)?;
+
+        if let Some(options) = option_flags {
+            self.option_flags = options;
+        }
+        if let Some(hint) = hint_length {
+            self.hint_length = hint;
+        }
+        if let Some(verify) = pw_verify_sec {
+            self.pw_verify_sec = verify;
+        }
+        if let Some(idle) = idle_timeout_min {
+            self.idle_timeout_min = idle;
+        }
+
+        self.update_keys(
+            password,
+            decryted.identity_master_key,
+            decryted.identity_lock_key,
+        )
+    }
+
     fn decrypt(&self, password: &str) -> Result<EncryptedKeyPair, SqrlError> {
         let mut encrypted_data: Vec<u8> = Vec::new();
         for byte in self.identity_master_key {
@@ -230,7 +261,7 @@ impl WritableDataBlock for IdentityInformation {
 
         let aes_gcm_iv = binary.next_sub_array(12)?.as_slice().try_into()?;
         let scrypt_config = ScryptConfig::from_binary(binary)?;
-        let option_flags = binary.next_u16()?;
+        let option_flags = ConfigOptions::from_u16(binary.next_u16()?);
         let hint_length = binary
             .pop_front()
             .ok_or(SqrlError::new("Invalid binary data".to_owned()))?;
@@ -259,7 +290,8 @@ impl WritableDataBlock for IdentityInformation {
         output.write_u16::<LittleEndian>(45)?;
         output.write_all(&self.aes_gcm_iv)?;
         self.scrypt_config.to_binary(output)?;
-        output.write_u16::<LittleEndian>(self.option_flags)?;
+
+        output.write_u16::<LittleEndian>(config_options_to_u16(&self.option_flags))?;
         output.push(self.hint_length);
         output.push(self.pw_verify_sec);
         output.write_u16::<LittleEndian>(self.idle_timeout_min)?;

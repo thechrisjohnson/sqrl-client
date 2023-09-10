@@ -31,17 +31,6 @@ pub type PublicIdentity = [u8; 64];
 pub type AesVerificationData = [u8; 16];
 pub type IdentityKey = [u8; 32];
 
-// The configuration options for the SqrlClient
-pub const CONFIG_CHECK_FOR_UPDATES: u16 = 0x1;
-pub const CONFIG_UPDATE_ANONYMOUSLY: u16 = 0x2;
-pub const CONFIG_SQRL_ONLY_LOGIN: u16 = 0x4;
-pub const CONFIG_NO_SQRL_BYPASS: u16 = 0x8;
-pub const CONFIG_WARN_MITM: u16 = 0x10;
-pub const CONFIG_CLEAR_DATA_ON_SUSPEND: u16 = 0x20;
-pub const CONFIG_CLEAR_DATA_ON_USER_SWITCH: u16 = 0x40;
-pub const CONFIG_CLEAR_DATA_ON_IDLE: u16 = 0x80;
-pub const CONFIG_WARN_NON_CPS: u16 = 0x100;
-
 const FILE_HEADER: &str = "sqrldata";
 const TEXT_IDENTITY_ALPHABET: [char; 56] = [
     '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K', 'L',
@@ -293,6 +282,23 @@ impl SqrlClient {
             .generate_unlock_request_signing_key(rescue_code, server_unlock_key)
     }
 
+    pub fn upate_cofig_settings(
+        &mut self,
+        password: &str,
+        option_flags: Option<Vec<ConfigOptions>>,
+        hint_length: Option<u8>,
+        pw_verify_sec: Option<u8>,
+        idle_timeout_min: Option<u16>,
+    ) -> Result<(), SqrlError> {
+        self.user_configuration.update_setings(
+            password,
+            option_flags,
+            hint_length,
+            pw_verify_sec,
+            idle_timeout_min,
+        )
+    }
+
     fn get_keys(
         &self,
         password: &str,
@@ -464,6 +470,64 @@ impl SqrlStorage for SqrlClient {
     fn to_textual_identity_format(&self) -> Result<String, SqrlError> {
         encode_textual_identity(self)
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ConfigOptions {
+    CheckForUpdates = 0x1,
+    UpdateAnonymously = 0x2,
+    SqrlOnlyLogin = 0x4,
+    NoSqrlBypass = 0x8,
+    WarnManInTheMiddle = 0x10,
+    ClearDataOnSuspend = 0x20,
+    ClearDataOnUserSwitch = 0x40,
+    ClearDataOnIdle = 0x80,
+    WarnNonCPS = 0x100,
+}
+
+impl ConfigOptions {
+    pub fn from_u16(value: u16) -> Vec<ConfigOptions> {
+        let mut ret = Vec::new();
+
+        if value & ConfigOptions::CheckForUpdates as u16 > 0 {
+            ret.push(ConfigOptions::CheckForUpdates);
+        }
+        if value & ConfigOptions::UpdateAnonymously as u16 > 0 {
+            ret.push(ConfigOptions::UpdateAnonymously);
+        }
+        if value & ConfigOptions::SqrlOnlyLogin as u16 > 0 {
+            ret.push(ConfigOptions::SqrlOnlyLogin);
+        }
+        if value & ConfigOptions::NoSqrlBypass as u16 > 0 {
+            ret.push(ConfigOptions::NoSqrlBypass);
+        }
+        if value & ConfigOptions::WarnManInTheMiddle as u16 > 0 {
+            ret.push(ConfigOptions::WarnManInTheMiddle);
+        }
+        if value & ConfigOptions::ClearDataOnSuspend as u16 > 0 {
+            ret.push(ConfigOptions::ClearDataOnSuspend);
+        }
+        if value & ConfigOptions::ClearDataOnUserSwitch as u16 > 0 {
+            ret.push(ConfigOptions::ClearDataOnUserSwitch);
+        }
+        if value & ConfigOptions::ClearDataOnIdle as u16 > 0 {
+            ret.push(ConfigOptions::ClearDataOnIdle);
+        }
+        if value & ConfigOptions::WarnNonCPS as u16 > 0 {
+            ret.push(ConfigOptions::WarnNonCPS);
+        }
+
+        ret
+    }
+}
+
+pub(crate) fn config_options_to_u16(options: &Vec<ConfigOptions>) -> u16 {
+    let mut ret: u16 = 0;
+    for t in options {
+        ret |= *t as u16;
+    }
+
+    ret
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
