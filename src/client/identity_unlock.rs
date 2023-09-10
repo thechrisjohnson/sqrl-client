@@ -20,7 +20,7 @@ use x25519_dalek::{PublicKey, StaticSecret};
 const RESCUE_CODE_SCRYPT_TIME: u8 = 5;
 const RESCUE_CODE_ALPHABET: [char; 10] = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct IdentityUnlockData {
     scrypt_config: ScryptConfig,
     identity_unlock_key: [u8; 32],

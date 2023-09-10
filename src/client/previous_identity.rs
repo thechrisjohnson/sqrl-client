@@ -12,7 +12,7 @@ use std::{collections::VecDeque, convert::TryInto};
 
 const MAX_NUM_KEYS: u16 = 4;
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct PreviousIdentityData {
     edition: u16,
     pub(crate) previous_identity_unlock_keys: VecDeque<IdentityKey>,

@@ -1,5 +1,5 @@
-use super::{readable_vector::ReadableVector, xor};
-use crate::error::SqrlError;
+use super::readable_vector::ReadableVector;
+use crate::{common::xor, error::SqrlError};
 use byteorder::{LittleEndian, WriteBytesExt};
 use rand::{prelude::StdRng, RngCore, SeedableRng};
 use scrypt::{scrypt, Params};
@@ -9,7 +9,7 @@ pub(crate) const SCRYPT_DEFAULT_LOG_N: u8 = 9;
 pub(crate) const SCRYPT_DEFAULT_R: u32 = 256;
 pub(crate) const SCRYPT_DEFAULT_P: u32 = 1;
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ScryptConfig {
     pub random_salt: [u8; 16],
     pub log_n_factor: u8,

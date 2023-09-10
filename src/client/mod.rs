@@ -11,7 +11,7 @@ use self::{
     writable_datablock::WritableDataBlock,
 };
 use crate::{
-    common::{IdentityUnlockKeys, SqrlUrl},
+    common::{en_hash, IdentityUnlockKeys, SqrlUrl},
     error::SqrlError,
     protocol::client_request::ClientRequest,
 };
@@ -87,19 +87,12 @@ impl SqrlClient {
         let mut identity_unlock_key: [u8; 32] = [0; 32];
         OsRng.fill_bytes(&mut identity_unlock_key);
 
-        // From the identity unlock key, generate the identity lock key and identity master key
-        // NOTE: The identity_lock_key is the "public key" for an ECDHKA ED25519 where the private key is the identity unlock key
-        let identity_master_key = en_hash(&identity_unlock_key);
-        let secret_key = StaticSecret::from(identity_unlock_key);
-        let public_key = x25519_dalek::PublicKey::from(&secret_key);
-        let identity_lock_key = public_key.to_bytes();
-
         // Encrypt the identity unlock key with a random rescue code to return
         let (identity_unlock, rescue_code) = IdentityUnlockData::new(identity_unlock_key)?;
 
         // Encrypt the identity master key and identity lock key in
         let user_configuration =
-            IdentityInformation::new(password, identity_master_key, identity_lock_key)?;
+            IdentityInformation::from_identity_unlock_key(password, identity_unlock_key)?;
 
         Ok((
             SqrlClient {
@@ -118,16 +111,9 @@ impl SqrlClient {
     ) -> Result<Self, SqrlError> {
         let identity_unlock_key = identity_unlock.decrypt_identity_unlock_key(rescue_code)?;
 
-        // From the identity unlock key, generate the identity lock key and identity master key
-        // NOTE: The identity_lock_key is the "public key" for an ECDHKA ED25519 where the private key is the identity unlock key
-        let identity_master_key = en_hash(&identity_unlock_key);
-        let secret_key = StaticSecret::from(identity_unlock_key);
-        let public_key = x25519_dalek::PublicKey::from(&secret_key);
-        let identity_lock_key = public_key.to_bytes();
-
         // Encrypt the identity master key and identity lock key in
         let user_configuration =
-            IdentityInformation::new(new_password, identity_master_key, identity_lock_key)?;
+            IdentityInformation::from_identity_unlock_key(new_password, identity_unlock_key)?;
 
         Ok(SqrlClient {
             user_configuration,
@@ -136,10 +122,32 @@ impl SqrlClient {
         })
     }
 
-    // TODO: Do I just want to get the rescue code, and then regenerate everything else?
-    pub fn unlock_with_rescue_code(&self, rescue_code: &str) -> Result<[u8; 32], SqrlError> {
-        self.identity_unlock
-            .decrypt_identity_unlock_key(rescue_code)
+    pub fn recreate_from_rescue_code(
+        &self,
+        rescue_code: &str,
+        new_password: &str,
+    ) -> Result<Self, SqrlError> {
+        let identity_unlock_key = self
+            .identity_unlock
+            .decrypt_identity_unlock_key(rescue_code)?;
+
+        let user_configuration =
+            IdentityInformation::from_identity_unlock_key(new_password, identity_unlock_key)?;
+
+        Ok(SqrlClient {
+            user_configuration,
+            identity_unlock: self.identity_unlock.clone(),
+            previous_identities: self.previous_identities.clone(),
+        })
+    }
+
+    pub fn change_password(
+        &mut self,
+        current_password: &str,
+        new_password: &str,
+    ) -> Result<(), SqrlError> {
+        self.user_configuration
+            .change_password(current_password, new_password)
     }
 
     pub fn verify_password(&mut self, password: &str) -> Result<(), SqrlError> {
@@ -516,26 +524,6 @@ impl GetKey for IdentityKey {
 
 pub(crate) const EMPTY_NONCE: [u8; 12] = [0; 12];
 
-pub(crate) fn xor(output: &mut [u8], other: &[u8]) {
-    for i in 0..output.len() {
-        output[i] ^= other[i];
-    }
-}
-
-fn en_hash(input: &[u8]) -> [u8; 32] {
-    let mut hasher = Sha256::new();
-    hasher.update(input);
-    let mut output: [u8; 32] = [0; 32];
-    for _ in 0..16 {
-        let hash_result: [u8; 32] = hasher.finalize().into();
-        hasher = Sha256::new();
-        hasher.update(hash_result);
-        xor(&mut output, &hash_result);
-    }
-
-    output
-}
-
 fn validate_textual_identity(textual_identity: &str) -> Result<(), SqrlError> {
     let mut line_num: u8 = 0;
     for line in textual_identity.lines() {
@@ -730,9 +718,30 @@ mod tests {
     #[test]
     fn try_rescue_code() {
         let client = SqrlClient::from_file(TEST_FILE_PATH).unwrap();
-        client
-            .unlock_with_rescue_code(TEST_FILE_RESCUE_CODE)
+        let second_client = client
+            .recreate_from_rescue_code(TEST_FILE_RESCUE_CODE, "password")
             .unwrap();
+
+        assert_eq!(
+            second_client
+                .user_configuration
+                .decrypt_identity_master_key("password")
+                .unwrap(),
+            client
+                .user_configuration
+                .decrypt_identity_master_key(TEST_FILE_PASSWORD)
+                .unwrap()
+        );
+        assert_eq!(
+            second_client
+                .user_configuration
+                .decrypt_identity_lock_key("password")
+                .unwrap(),
+            client
+                .user_configuration
+                .decrypt_identity_lock_key(TEST_FILE_PASSWORD)
+                .unwrap()
+        )
     }
 
     #[test]
