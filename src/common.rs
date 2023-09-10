@@ -1,5 +1,6 @@
 use crate::error::SqrlError;
 use ed25519_dalek::PublicKey;
+use sha2::{Digest, Sha256};
 use std::fmt;
 use url::Url;
 
@@ -60,6 +61,26 @@ impl IdentityUnlockKeys {
             server_unlock_key,
             verify_unlock_key,
         }
+    }
+}
+
+pub(crate) fn en_hash(input: &[u8]) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    hasher.update(input);
+    let mut output: [u8; 32] = [0; 32];
+    for _ in 0..16 {
+        let hash_result: [u8; 32] = hasher.finalize().into();
+        hasher = Sha256::new();
+        hasher.update(hash_result);
+        xor(&mut output, &hash_result);
+    }
+
+    output
+}
+
+pub(crate) fn xor(output: &mut [u8], other: &[u8]) {
+    for i in 0..output.len() {
+        output[i] ^= other[i];
     }
 }
 

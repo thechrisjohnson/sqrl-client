@@ -4,7 +4,7 @@ use super::{
     writable_datablock::WritableDataBlock,
     AesVerificationData, DataType, IdentityKey, IdentityUnlockKeys,
 };
-use crate::error::SqrlError;
+use crate::{common::en_hash, error::SqrlError};
 use aes_gcm::{
     aead::{AeadMut, OsRng, Payload},
     Aes256Gcm, KeyInit,
@@ -13,9 +13,9 @@ use byteorder::{LittleEndian, WriteBytesExt};
 use ed25519_dalek::{PublicKey, SecretKey};
 use rand::{prelude::StdRng, RngCore, SeedableRng};
 use std::{collections::VecDeque, convert::TryInto, io::Write};
-use x25519_dalek::EphemeralSecret;
+use x25519_dalek::{EphemeralSecret, StaticSecret};
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct IdentityInformation {
     aes_gcm_iv: [u8; 12],
     scrypt_config: ScryptConfig,
@@ -29,7 +29,7 @@ pub(crate) struct IdentityInformation {
 }
 
 impl IdentityInformation {
-    pub fn new(
+    pub(crate) fn new(
         password: &str,
         identity_master_key: [u8; 32],
         identity_lock_key: [u8; 32],
@@ -50,6 +50,20 @@ impl IdentityInformation {
         Ok(config)
     }
 
+    pub(crate) fn from_identity_unlock_key(
+        password: &str,
+        identity_unlock_key: [u8; 32],
+    ) -> Result<Self, SqrlError> {
+        // From the identity unlock key, generate the identity lock key and identity master key
+        // NOTE: The identity_lock_key is the "public key" for an ECDHKA ED25519 where the private key is the identity unlock key
+        let identity_master_key = en_hash(&identity_unlock_key);
+        let secret_key = StaticSecret::from(identity_unlock_key);
+        let public_key = x25519_dalek::PublicKey::from(&secret_key);
+        let identity_lock_key = public_key.to_bytes();
+
+        Self::new(password, identity_master_key, identity_lock_key)
+    }
+
     fn aad(&self) -> Result<Vec<u8>, SqrlError> {
         let mut result = Vec::<u8>::new();
         result.write_u16::<LittleEndian>(self.len())?;
@@ -68,22 +82,18 @@ impl IdentityInformation {
         &self,
         password: &str,
     ) -> Result<IdentityKey, SqrlError> {
-        let mut user_identity_key = [0; 32];
         let decrypted_data = self.decrypt(password)?;
-        user_identity_key[..32].copy_from_slice(&decrypted_data[..32]);
-
-        Ok(user_identity_key)
+        Ok(decrypted_data.identity_master_key)
     }
 
     pub(crate) fn decrypt_identity_lock_key(
         &self,
         password: &str,
     ) -> Result<x25519_dalek::PublicKey, SqrlError> {
-        let mut user_unlock_key = [0; 32];
         let decrypted_data = self.decrypt(password)?;
-        user_unlock_key[..32].copy_from_slice(&decrypted_data[32..64]);
-
-        Ok(x25519_dalek::PublicKey::from(user_unlock_key))
+        Ok(x25519_dalek::PublicKey::from(
+            decrypted_data.identity_lock_key,
+        ))
     }
 
     pub(crate) fn verify(&self, password: &str) -> Result<(), SqrlError> {
@@ -152,7 +162,20 @@ impl IdentityInformation {
         ))
     }
 
-    fn decrypt(&self, password: &str) -> Result<[u8; 64], SqrlError> {
+    pub(crate) fn change_password(
+        &mut self,
+        current_password: &str,
+        new_password: &str,
+    ) -> Result<(), SqrlError> {
+        let decrypted_data = self.decrypt(current_password)?;
+        self.update_keys(
+            new_password,
+            decrypted_data.identity_master_key,
+            decrypted_data.identity_lock_key,
+        )
+    }
+
+    fn decrypt(&self, password: &str) -> Result<EncryptedKeyPair, SqrlError> {
         let mut encrypted_data: Vec<u8> = Vec::new();
         for byte in self.identity_master_key {
             encrypted_data.push(byte);
@@ -180,7 +203,15 @@ impl IdentityInformation {
             decrypted_data[i] = *x;
         }
 
-        Ok(decrypted_data)
+        let mut identity_master_key = [0; 32];
+        let mut identity_lock_key = [0; 32];
+        identity_master_key[..32].copy_from_slice(&decrypted_data[..32]);
+        identity_lock_key[..32].copy_from_slice(&decrypted_data[32..64]);
+
+        Ok(EncryptedKeyPair {
+            identity_master_key,
+            identity_lock_key,
+        })
     }
 }
 
@@ -237,5 +268,103 @@ impl WritableDataBlock for IdentityInformation {
         output.write_all(&self.verification_data)?;
 
         Ok(())
+    }
+}
+
+#[derive(Debug, PartialEq)]
+struct EncryptedKeyPair {
+    identity_master_key: [u8; 32],
+    identity_lock_key: [u8; 32],
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TEST_PASSWORD: &str = "password";
+
+    #[test]
+    fn decrypt_identity_lock_key_matches() {
+        let mut identity_lock_key = [0; 32];
+        OsRng.fill_bytes(&mut identity_lock_key);
+
+        let identity_information =
+            IdentityInformation::new(TEST_PASSWORD, [0; 32], identity_lock_key).unwrap();
+        let decrypted = identity_information
+            .decrypt_identity_lock_key(TEST_PASSWORD)
+            .unwrap();
+        assert_eq!(decrypted.as_bytes(), &identity_lock_key);
+    }
+
+    #[test]
+    fn decrypt_identity_master_key_matches() {
+        let mut identity_master_key = [0; 32];
+        OsRng.fill_bytes(&mut identity_master_key);
+
+        let identity_information =
+            IdentityInformation::new(TEST_PASSWORD, identity_master_key, [0; 32]).unwrap();
+        let decrypted = identity_information
+            .decrypt_identity_master_key(TEST_PASSWORD)
+            .unwrap();
+        assert_eq!(decrypted, identity_master_key)
+    }
+
+    #[test]
+    fn update_keys_updates_keys() {
+        let mut identity_master_key = [0; 32];
+        let mut identity_lock_key = [0; 32];
+        OsRng.fill_bytes(&mut identity_master_key);
+        OsRng.fill_bytes(&mut identity_lock_key);
+
+        let mut identity_information =
+            IdentityInformation::new(TEST_PASSWORD, [0; 32], [0; 32]).unwrap();
+        assert_eq!(
+            identity_information
+                .decrypt_identity_master_key(TEST_PASSWORD)
+                .unwrap(),
+            [0; 32]
+        );
+        assert_eq!(
+            identity_information
+                .decrypt_identity_lock_key(TEST_PASSWORD)
+                .unwrap(),
+            x25519_dalek::PublicKey::from([0; 32])
+        );
+
+        identity_information
+            .update_keys(TEST_PASSWORD, identity_master_key, identity_lock_key)
+            .unwrap();
+        assert_eq!(
+            identity_information
+                .decrypt_identity_master_key(TEST_PASSWORD)
+                .unwrap(),
+            identity_master_key
+        );
+        assert_eq!(
+            identity_information
+                .decrypt_identity_lock_key(TEST_PASSWORD)
+                .unwrap()
+                .as_bytes(),
+            &identity_lock_key
+        );
+    }
+
+    #[test]
+    fn reset_password_works() {
+        let mut identity_master_key = [0; 32];
+        let mut identity_lock_key = [0; 32];
+        OsRng.fill_bytes(&mut identity_master_key);
+        OsRng.fill_bytes(&mut identity_lock_key);
+
+        let mut identity_information =
+            IdentityInformation::new(TEST_PASSWORD, identity_master_key, identity_lock_key)
+                .unwrap();
+        let decryted = identity_information.decrypt(TEST_PASSWORD).unwrap();
+
+        identity_information
+            .change_password(TEST_PASSWORD, "password2")
+            .unwrap();
+        let decryted2 = identity_information.decrypt("password2").unwrap();
+        assert_eq!(decryted, decryted2);
     }
 }
