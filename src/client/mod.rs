@@ -276,6 +276,15 @@ impl SqrlClient {
             .generate_server_unlock_and_verify_unlock_keys(password)
     }
 
+    pub fn generate_unlock_request_signing_key(
+        &self,
+        rescue_code: &str,
+        server_unlock_key: [u8; 32],
+    ) -> Result<SecretKey, SqrlError> {
+        self.identity_unlock
+            .generate_unlock_request_signing_key(rescue_code, server_unlock_key)
+    }
+
     fn get_keys(
         &self,
         password: &str,
