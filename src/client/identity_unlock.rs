@@ -7,6 +7,7 @@ use crate::error::SqrlError;
 use aes_gcm::aead::{Aead, Payload};
 use aes_gcm::{Aes256Gcm, KeyInit};
 use byteorder::{LittleEndian, WriteBytesExt};
+use ed25519_dalek::SecretKey;
 use num_bigint::BigUint;
 use num_traits::ToPrimitive;
 use rand::prelude::StdRng;
@@ -14,6 +15,7 @@ use rand::{RngCore, SeedableRng};
 use std::collections::VecDeque;
 use std::convert::TryInto;
 use std::io::Write;
+use x25519_dalek::{PublicKey, StaticSecret};
 
 const RESCUE_CODE_SCRYPT_TIME: u8 = 5;
 const RESCUE_CODE_ALPHABET: [char; 10] = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
@@ -106,6 +108,20 @@ impl IdentityUnlockData {
         }
 
         Ok(unencrypted_data)
+    }
+
+    pub(crate) fn generate_unlock_request_signing_key(
+        &self,
+        rescue_code: &str,
+        server_unlock_key: [u8; 32],
+    ) -> Result<SecretKey, SqrlError> {
+        // Decrypt the identity unlock key and convert it to a DHKA secret key
+        let unlock_key = self.decrypt_identity_unlock_key(rescue_code)?;
+        let secret_key = StaticSecret::from(unlock_key);
+
+        // Do the key exchange and make it the secret key
+        let shared_secret = secret_key.diffie_hellman(&PublicKey::from(server_unlock_key));
+        Ok(SecretKey::from_bytes(shared_secret.as_bytes())?)
     }
 
     fn aad(&self) -> Result<Vec<u8>, SqrlError> {
