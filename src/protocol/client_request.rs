@@ -379,7 +379,7 @@ mod tests {
                 BASE64_URL_SAFE_NO_PAD.encode(s.as_bytes()),
                 "E6Qs2gX7W-Pwi9Y3KAmbkuYjLSWXCtKyBcymWloHAuo"
             ),
-            None => assert!(false),
+            None => panic!(),
         }
         match &client_parameters.opt {
             Some(s) => assert_eq!(
@@ -389,7 +389,7 @@ mod tests {
                     ClientOption::ServerUnlockKey
                 ]
             ),
-            None => assert!(false),
+            None => panic!(),
         }
     }
 
@@ -399,7 +399,7 @@ mod tests {
         match data {
             ServerData::Url { url } => assert_eq!(url.to_string(), "sqrl://testurl.com"),
             ServerData::ServerResponse { server_response: _ } => {
-                assert!(false, "Did not expect a ServerResponse");
+                panic!("Did not expect a ServerResponse");
             }
         };
     }
@@ -407,8 +407,8 @@ mod tests {
     #[test]
     fn server_data_parse_nonsqrl_url() {
         let result = ServerData::from_base64(TEST_INVALID_URL);
-        if let Ok(_) = result {
-            assert!(false, "Got back a real result");
+        if result.is_ok() {
+            panic!("Got back a real result");
         }
     }
 
@@ -416,7 +416,7 @@ mod tests {
     fn server_data_parse_server_data() {
         let data = ServerData::from_base64(TEST_SERVER_RESPONSE).unwrap();
         match data {
-            ServerData::Url { url: _ } => assert!(false, "Did not expect a url"),
+            ServerData::Url { url: _ } => panic!("Did not expect a url"),
             ServerData::ServerResponse { server_response } => {
                 assert_eq!(server_response.nut, "1WM9lfF1ST-z");
             }
