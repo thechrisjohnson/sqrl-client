@@ -19,6 +19,6 @@ jobs:
     - name: Build
       run: cargo build --verbose --release
     - name: Lint
-      run: cargo clippy --verbose --release -- -Dwarnings
+      run: cargo clippy --verbose --release --all-targets -- -Dwarnings
     - name: Run tests
       run: cargo test --verbose --release
