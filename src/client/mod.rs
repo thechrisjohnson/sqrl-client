@@ -11,21 +11,21 @@ use self::{
     writable_datablock::WritableDataBlock,
 };
 use crate::{
-    common::{en_hash, IdentityUnlockKeys, SqrlUrl},
+    common::{en_hash, vec_to_u8_32, IdentityUnlockKeys, SqrlUrl},
     error::SqrlError,
     protocol::client_request::ClientRequest,
 };
 use aes_gcm::aead::OsRng;
 use base64::{prelude::BASE64_URL_SAFE, Engine};
 use byteorder::{LittleEndian, WriteBytesExt};
-use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signer};
+use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use hmac::{Hmac, Mac};
 use num_bigint::BigUint;
 use num_traits::{FromPrimitive, ToPrimitive};
 use rand::RngCore;
 use sha2::{Digest, Sha256};
 use std::{collections::VecDeque, fs::File, io::Write};
-use x25519_dalek::StaticSecret;
+use x25519_dalek::{PublicKey, StaticSecret};
 
 pub type PublicIdentity = [u8; 64];
 pub type AesVerificationData = [u8; 16];
@@ -153,9 +153,10 @@ impl SqrlClient {
         previous_key_index: Option<usize>,
     ) -> Result<(), SqrlError> {
         let sqrl_url = SqrlUrl::parse(url)?;
-        let keys = self.get_keys(password, &sqrl_url.get_auth_domain(), alternate_identity)?;
+        let private_key =
+            self.get_private_key(password, &sqrl_url.get_auth_domain(), alternate_identity)?;
 
-        request.client_params.idk = keys.public;
+        request.client_params.idk = private_key.verifying_key();
 
         if let Some(prev) = &self.previous_identities {
             let key_index = previous_key_index.unwrap_or(0);
@@ -166,15 +167,16 @@ impl SqrlClient {
             if let Some(previous_key) =
                 prev.get_previous_identity(&identity_master_key, key_index)?
             {
-                let previous_keypair =
-                    previous_key.get_keys(&sqrl_url.get_auth_domain(), alternate_identity)?;
-                request.client_params.pidk = Some(previous_keypair.public);
-                request.pids = Some(previous_keypair.sign(request.get_signed_string().as_bytes()));
+                let previous_private_key = previous_key
+                    .get_private_key(&sqrl_url.get_auth_domain(), alternate_identity)?;
+                request.client_params.pidk = Some(previous_private_key.verifying_key());
+                request.pids =
+                    Some(previous_private_key.sign(request.get_signed_string().as_bytes()));
             }
         }
 
         // Sign last, as we need to set the current and previous key ids
-        request.ids = keys.sign(request.get_signed_string().as_bytes());
+        request.ids = private_key.sign(request.get_signed_string().as_bytes());
 
         Ok(())
     }
@@ -186,12 +188,12 @@ impl SqrlClient {
         alternate_identity: Option<&str>,
         secret_index: &str,
     ) -> Result<String, SqrlError> {
-        let keys = self.get_keys(
+        let private_key = self.get_private_key(
             password,
             &SqrlUrl::parse(url)?.get_auth_domain(),
             alternate_identity,
         )?;
-        let hash = en_hash(keys.secret.as_bytes());
+        let hash = en_hash(&private_key.to_bytes());
         let mut hmac = Hmac::<Sha256>::new_from_slice(&hash)?;
         hmac.update(secret_index.as_bytes());
         Ok(BASE64_URL_SAFE.encode(hmac.finalize().into_bytes()))
@@ -214,7 +216,7 @@ impl SqrlClient {
         // From the identity unlock key, generate the new identity lock key and identity master key
         let new_identity_master_key = en_hash(&new_identity_unlock_key);
         let secret_key = StaticSecret::from(new_identity_unlock_key);
-        let public_key = x25519_dalek::PublicKey::from(&secret_key);
+        let public_key = PublicKey::from(&secret_key);
         let new_identity_lock_key = public_key.to_bytes();
 
         // Encrypt the identity unlock key with a random rescue code to return
@@ -254,13 +256,14 @@ impl SqrlClient {
         password: &str,
         url: &str,
         alternate_identity: Option<&str>,
-    ) -> Result<PublicKey, SqrlError> {
-        let keys = self.get_keys(
-            password,
-            &SqrlUrl::parse(url)?.get_auth_domain(),
-            alternate_identity,
-        )?;
-        Ok(keys.public)
+    ) -> Result<VerifyingKey, SqrlError> {
+        Ok(self
+            .get_private_key(
+                password,
+                &SqrlUrl::parse(url)?.get_auth_domain(),
+                alternate_identity,
+            )?
+            .verifying_key())
     }
 
     pub fn generate_server_unlock_and_verify_unlock_keys(
@@ -277,7 +280,7 @@ impl SqrlClient {
         &self,
         rescue_code: &str,
         server_unlock_key: [u8; 32],
-    ) -> Result<SecretKey, SqrlError> {
+    ) -> Result<SigningKey, SqrlError> {
         self.identity_unlock
             .generate_unlock_request_signing_key(rescue_code, server_unlock_key)
     }
@@ -299,17 +302,17 @@ impl SqrlClient {
         )
     }
 
-    fn get_keys(
+    fn get_private_key(
         &self,
         password: &str,
         auth_domain: &str,
         alternate_identity: Option<&str>,
-    ) -> Result<Keypair, SqrlError> {
+    ) -> Result<SigningKey, SqrlError> {
         let key = self
             .user_configuration
             .decrypt_identity_master_key(password)?;
 
-        key.get_keys(auth_domain, alternate_identity)
+        key.get_private_key(auth_domain, alternate_identity)
     }
 
     fn from_binary(mut binary: VecDeque<u8>) -> Result<Self, SqrlError> {
@@ -555,15 +558,19 @@ impl DataType {
 }
 
 trait GetKey {
-    fn get_keys(&self, url: &str, alternate_identity: Option<&str>) -> Result<Keypair, SqrlError>;
+    fn get_private_key(
+        &self,
+        url: &str,
+        alternate_identity: Option<&str>,
+    ) -> Result<SigningKey, SqrlError>;
 }
 
 impl GetKey for IdentityKey {
-    fn get_keys(
+    fn get_private_key(
         &self,
         auth_domain: &str,
         alternate_identity: Option<&str>,
-    ) -> Result<Keypair, SqrlError> {
+    ) -> Result<SigningKey, SqrlError> {
         let holder;
         let data = match alternate_identity {
             Some(id) => {
@@ -575,14 +582,12 @@ impl GetKey for IdentityKey {
 
         let mut hmac = Hmac::<Sha256>::new_from_slice(self)?;
         hmac.update(data.as_bytes());
+        let mut temp = Vec::new();
+        for i in hmac.finalize().into_bytes() {
+            temp.push(i);
+        }
 
-        let private = SecretKey::from_bytes(&hmac.finalize().into_bytes())?;
-        let public: PublicKey = (&private).into();
-
-        Ok(Keypair {
-            public,
-            secret: private,
-        })
+        Ok(SigningKey::from_bytes(&vec_to_u8_32(&temp)?))
     }
 }
 

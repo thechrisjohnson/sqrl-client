@@ -4,7 +4,7 @@ use super::{
 };
 use crate::{common::SqrlUrl, error::SqrlError};
 use base64::{prelude::BASE64_URL_SAFE_NO_PAD, Engine};
-use ed25519_dalek::{PublicKey, Signature};
+use ed25519_dalek::{Signature, VerifyingKey};
 use std::{convert::TryFrom, fmt, str::FromStr};
 
 pub struct ClientRequest {
@@ -58,10 +58,13 @@ impl ClientRequest {
     pub fn to_query_string(&self) -> String {
         let mut result = format!("client={}", self.client_params.encode());
         result += &format!("&server={}", self.server);
-        result += &format!("&ids={}", BASE64_URL_SAFE_NO_PAD.encode(self.ids));
+        result += &format!(
+            "&ids={}",
+            BASE64_URL_SAFE_NO_PAD.encode(self.ids.to_bytes())
+        );
 
         if let Some(pids) = &self.pids {
-            result += &format!("&pids={}", BASE64_URL_SAFE_NO_PAD.encode(pids));
+            result += &format!("&pids={}", BASE64_URL_SAFE_NO_PAD.encode(pids.to_bytes()));
         }
         if let Some(urs) = &self.urs {
             result += &format!("&urs={}", BASE64_URL_SAFE_NO_PAD.encode(urs));
@@ -83,10 +86,10 @@ impl ClientRequest {
 pub struct ClientParameters {
     pub ver: ProtocolVersion,
     pub cmd: ClientCommand,
-    pub idk: PublicKey,
+    pub idk: VerifyingKey,
     pub opt: Option<Vec<ClientOption>>,
     pub btn: Option<u8>,
-    pub pidk: Option<PublicKey>,
+    pub pidk: Option<VerifyingKey>,
     pub ins: Option<String>,
     pub pins: Option<String>,
     pub suk: Option<String>,
@@ -94,7 +97,7 @@ pub struct ClientParameters {
 }
 
 impl ClientParameters {
-    pub fn new(cmd: ClientCommand, idk: PublicKey) -> ClientParameters {
+    pub fn new(cmd: ClientCommand, idk: VerifyingKey) -> ClientParameters {
         ClientParameters {
             ver: ProtocolVersion::new(PROTOCOL_VERSIONS).unwrap(),
             cmd,

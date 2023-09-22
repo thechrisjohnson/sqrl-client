@@ -11,10 +11,10 @@ use aes_gcm::{
     Aes256Gcm, KeyInit,
 };
 use byteorder::{LittleEndian, WriteBytesExt};
-use ed25519_dalek::{PublicKey, SecretKey};
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use rand::{prelude::StdRng, RngCore, SeedableRng};
 use std::{collections::VecDeque, convert::TryInto, io::Write};
-use x25519_dalek::{EphemeralSecret, StaticSecret};
+use x25519_dalek::{EphemeralSecret, PublicKey, StaticSecret};
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct IdentityInformation {
@@ -59,7 +59,7 @@ impl IdentityInformation {
         // NOTE: The identity_lock_key is the "public key" for an ECDHKA ED25519 where the private key is the identity unlock key
         let identity_master_key = en_hash(&identity_unlock_key);
         let secret_key = StaticSecret::from(identity_unlock_key);
-        let public_key = x25519_dalek::PublicKey::from(&secret_key);
+        let public_key = PublicKey::from(&secret_key);
         let identity_lock_key = public_key.to_bytes();
 
         Self::new(password, identity_master_key, identity_lock_key)
@@ -87,14 +87,9 @@ impl IdentityInformation {
         Ok(decrypted_data.identity_master_key)
     }
 
-    pub(crate) fn decrypt_identity_lock_key(
-        &self,
-        password: &str,
-    ) -> Result<x25519_dalek::PublicKey, SqrlError> {
+    pub(crate) fn decrypt_identity_lock_key(&self, password: &str) -> Result<PublicKey, SqrlError> {
         let decrypted_data = self.decrypt(password)?;
-        Ok(x25519_dalek::PublicKey::from(
-            decrypted_data.identity_lock_key,
-        ))
+        Ok(PublicKey::from(decrypted_data.identity_lock_key))
     }
 
     pub(crate) fn verify(&self, password: &str) -> Result<(), SqrlError> {
@@ -149,13 +144,13 @@ impl IdentityInformation {
 
         // Generate the random secret key and the server unlock key (the matching public key)
         let random_key = EphemeralSecret::random_from_rng(OsRng);
-        let server_unlock_key = x25519_dalek::PublicKey::from(&random_key);
+        let server_unlock_key = PublicKey::from(&random_key);
 
         // Diffie-Hellman the random key with the identity lock key
         // Take that shared secret key and use it to generate an ed25519 key pair
         let shared_secret = random_key.diffie_hellman(&identity_lock_key);
-        let secret_key = SecretKey::from_bytes(shared_secret.as_bytes())?;
-        let verify_unlock_key = PublicKey::from(&secret_key);
+        let secret_key = SigningKey::from_bytes(shared_secret.as_bytes());
+        let verify_unlock_key = VerifyingKey::from(&secret_key);
 
         Ok(IdentityUnlockKeys::new(
             server_unlock_key,
@@ -360,7 +355,7 @@ mod tests {
             identity_information
                 .decrypt_identity_lock_key(TEST_PASSWORD)
                 .unwrap(),
-            x25519_dalek::PublicKey::from([0; 32])
+            PublicKey::from([0; 32])
         );
 
         identity_information

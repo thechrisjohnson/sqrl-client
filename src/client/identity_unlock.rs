@@ -7,7 +7,7 @@ use crate::error::SqrlError;
 use aes_gcm::aead::{Aead, Payload};
 use aes_gcm::{Aes256Gcm, KeyInit};
 use byteorder::{LittleEndian, WriteBytesExt};
-use ed25519_dalek::SecretKey;
+use ed25519_dalek::SigningKey;
 use num_bigint::BigUint;
 use num_traits::ToPrimitive;
 use rand::prelude::StdRng;
@@ -114,14 +114,14 @@ impl IdentityUnlockData {
         &self,
         rescue_code: &str,
         server_unlock_key: [u8; 32],
-    ) -> Result<SecretKey, SqrlError> {
+    ) -> Result<SigningKey, SqrlError> {
         // Decrypt the identity unlock key and convert it to a DHKA secret key
         let unlock_key = self.decrypt_identity_unlock_key(rescue_code)?;
         let secret_key = StaticSecret::from(unlock_key);
 
         // Do the key exchange and make it the secret key
         let shared_secret = secret_key.diffie_hellman(&PublicKey::from(server_unlock_key));
-        Ok(SecretKey::from_bytes(shared_secret.as_bytes())?)
+        Ok(SigningKey::from_bytes(shared_secret.as_bytes()))
     }
 
     fn aad(&self) -> Result<Vec<u8>, SqrlError> {
