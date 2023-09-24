@@ -2,9 +2,12 @@ pub mod client_request;
 pub mod protocol_version;
 pub mod server_response;
 
-use crate::error::SqrlError;
+use crate::{
+    common::{vec_to_u8_32, vec_to_u8_64},
+    error::SqrlError,
+};
 use base64::{prelude::BASE64_URL_SAFE_NO_PAD, Engine};
-use ed25519_dalek::{PublicKey, Signature};
+use ed25519_dalek::{Signature, VerifyingKey};
 use std::collections::HashMap;
 
 // The list of supported versions
@@ -45,10 +48,10 @@ pub(crate) fn parse_query_data(query: &str) -> Result<HashMap<String, String>, S
     Ok(map)
 }
 
-pub(crate) fn decode_public_key(key: &str) -> Result<PublicKey, SqrlError> {
-    let bytes: Vec<u8>;
+pub(crate) fn decode_public_key(key: &str) -> Result<VerifyingKey, SqrlError> {
+    let bytes: [u8; 32];
     match BASE64_URL_SAFE_NO_PAD.decode(key) {
-        Ok(x) => bytes = x,
+        Ok(x) => bytes = vec_to_u8_32(&x)?,
         Err(_) => {
             return Err(SqrlError::new(format!(
                 "Failed to decode base64 encoded public key {}",
@@ -57,7 +60,7 @@ pub(crate) fn decode_public_key(key: &str) -> Result<PublicKey, SqrlError> {
         }
     }
 
-    match PublicKey::from_bytes(&bytes) {
+    match VerifyingKey::from_bytes(&bytes) {
         Ok(x) => Ok(x),
         Err(e) => Err(SqrlError::new(format!(
             "Failed to generate public key from {}: {}",
@@ -67,9 +70,9 @@ pub(crate) fn decode_public_key(key: &str) -> Result<PublicKey, SqrlError> {
 }
 
 pub(crate) fn decode_signature(key: &str) -> Result<Signature, SqrlError> {
-    let bytes: Vec<u8>;
+    let bytes: [u8; 64];
     match BASE64_URL_SAFE_NO_PAD.decode(key) {
-        Ok(x) => bytes = x,
+        Ok(x) => bytes = vec_to_u8_64(&x)?,
         Err(_) => {
             return Err(SqrlError::new(format!(
                 "Failed to decode base64 encoded signature {}",
@@ -78,13 +81,7 @@ pub(crate) fn decode_signature(key: &str) -> Result<Signature, SqrlError> {
         }
     }
 
-    match Signature::from_bytes(&bytes) {
-        Ok(x) => Ok(x),
-        Err(e) => Err(SqrlError::new(format!(
-            "Failed to generate signature from {}: {}",
-            key, e
-        ))),
-    }
+    Ok(Signature::from_bytes(&bytes))
 }
 
 pub(crate) fn parse_newline_data(data: &str) -> Result<HashMap<String, String>, SqrlError> {

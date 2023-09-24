@@ -1,8 +1,9 @@
 use crate::error::SqrlError;
-use ed25519_dalek::PublicKey;
+use ed25519_dalek::VerifyingKey;
 use sha2::{Digest, Sha256};
 use std::fmt;
 use url::Url;
+use x25519_dalek::PublicKey;
 
 pub const SQRL_PROTOCOL: &str = "sqrl";
 
@@ -51,17 +52,43 @@ impl fmt::Display for SqrlUrl {
 }
 
 pub struct IdentityUnlockKeys {
-    pub server_unlock_key: x25519_dalek::PublicKey,
-    pub verify_unlock_key: PublicKey,
+    pub server_unlock_key: PublicKey,
+    pub verify_unlock_key: VerifyingKey,
 }
 
 impl IdentityUnlockKeys {
-    pub fn new(server_unlock_key: x25519_dalek::PublicKey, verify_unlock_key: PublicKey) -> Self {
+    pub fn new(server_unlock_key: PublicKey, verify_unlock_key: VerifyingKey) -> Self {
         IdentityUnlockKeys {
             server_unlock_key,
             verify_unlock_key,
         }
     }
+}
+
+pub(crate) fn vec_to_u8_32(vector: &Vec<u8>) -> Result<[u8; 32], SqrlError> {
+    let mut result = [0; 32];
+    if vector.len() != 32 {
+        return Err(SqrlError::new(format!(
+            "Error converting vec<u8> to [u8; 32]: Expected 32 bytes, but found {}",
+            vector.len()
+        )));
+    }
+
+    result[..32].copy_from_slice(&vector[..32]);
+    Ok(result)
+}
+
+pub(crate) fn vec_to_u8_64(vector: &Vec<u8>) -> Result<[u8; 64], SqrlError> {
+    let mut result = [0; 64];
+    if vector.len() != 64 {
+        return Err(SqrlError::new(format!(
+            "Error converting vec<u8> to [u8; 64]: Expected 64 bytes, but found {}",
+            vector.len()
+        )));
+    }
+
+    result[..64].copy_from_slice(&vector[..64]);
+    Ok(result)
 }
 
 pub(crate) fn en_hash(input: &[u8]) -> [u8; 32] {
