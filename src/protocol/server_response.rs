@@ -1,3 +1,5 @@
+//! Code for a server to respond to client requests
+
 use super::{
     encode_newline_data, get_or_error, parse_newline_data, protocol_version::ProtocolVersion,
     PROTOCOL_VERSIONS,
@@ -16,20 +18,34 @@ const SIN_KEY: &str = "sin";
 const SUK_KEY: &str = "suk";
 const ASK_KEY: &str = "ask";
 
+/// An object representing a response from the server
 #[derive(Debug, PartialEq)]
 pub struct ServerResponse {
+    /// The SQRL protocol versions supported by the server
     pub ver: ProtocolVersion,
+    /// The nut to be used for signing the next request
     pub nut: String,
+    /// A collection of transaction indication flags
     pub tif: Vec<TIFValue>,
+    /// The server object to query in the next request
     pub qry: String,
+    /// If CPS set, the url to redirect the client's browser to after
+    /// successful authentication
     pub url: Option<String>,
+    /// If CPS set, a url to use to cancel a user's authentication
     pub can: Option<String>,
+    /// The secret index used for requesting a client to return an indexed
+    /// secret
     pub sin: Option<String>,
+    /// The server unlock key requested by the client
     pub suk: Option<String>,
+    /// A way for the server to request that the client display a prompt to the
+    /// client user and return the selection
     pub ask: Option<String>,
 }
 
 impl ServerResponse {
+    /// Create a new server response object from the nut and tif values
     pub fn new(nut: String, tif: Vec<TIFValue>, qry: String) -> ServerResponse {
         ServerResponse {
             ver: ProtocolVersion::new(PROTOCOL_VERSIONS).unwrap(),
@@ -44,12 +60,14 @@ impl ServerResponse {
         }
     }
 
+    /// Decode a server response from a base64-encoded value
     pub fn from_base64(base64_string: &str) -> Result<Self, SqrlError> {
         // Decode the response
         let server_data = String::from_utf8(BASE64_URL_SAFE_NO_PAD.decode(base64_string)?)?;
         Self::from_str(&server_data)
     }
 
+    /// Return the base64-encoded value of the server response
     pub fn to_base64(&self) -> String {
         BASE64_URL_SAFE_NO_PAD.encode(self.to_string().as_bytes())
     }
@@ -125,21 +143,38 @@ impl FromStr for ServerResponse {
     }
 }
 
+/// Transaction information flags
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TIFValue {
+    /// A response indicating the current identity (idk) matches the known
+    /// server identity
     CurrentIdMatch = 0x1,
+    /// A response indicating the previous identity (pidk) matches the known
+    /// server identity
     PreviousIdMatch = 0x2,
+    /// A response indicating the client ip address matches the first ip
+    /// address to query the server
     IpsMatch = 0x4,
+    /// Response that indicates SQRL is disabled for this user
     SqrlDisabled = 0x8,
+    /// Response that indicates the server does not support the previous request
     FunctionNotSupported = 0x10,
+    /// Response that indicates the server experienced a transient error
+    /// and the request should be retried
     TransientError = 0x20,
+    /// Response that indicates the client command failed
     CommandFailed = 0x40,
+    /// Response that indicates that the client query was incorrect
     ClientFailure = 0x80,
+    /// Response that indicates that the identities used in the client query do not
+    /// match the server's
     BadId = 0x100,
+    /// Response that indicates the client identity used has been superseded
     IdentitySuperseded = 0x200,
 }
 
 impl TIFValue {
+    /// Parse the TIF values based on a string
     pub fn parse_str(value: &str) -> Result<Vec<Self>, SqrlError> {
         match value.parse::<u16>() {
             Ok(x) => Ok(Self::from_u16(x)),
@@ -150,7 +185,8 @@ impl TIFValue {
         }
     }
 
-    pub fn from_u16(value: u16) -> Vec<TIFValue> {
+    /// Parse the TIF values based on a u16
+    pub fn from_u16(value: u16) -> Vec<Self> {
         let mut ret = Vec::new();
 
         if value & TIFValue::CurrentIdMatch as u16 > 0 {

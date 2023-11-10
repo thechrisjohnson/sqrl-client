@@ -1,6 +1,10 @@
+//! Code for exchanging and matching a common SQRL protocol version
+
 use crate::error::SqrlError;
 use std::fmt;
 
+/// An object representing the SQRL protocol versions supported by a client
+/// and/or server
 #[derive(Debug, PartialEq)]
 pub struct ProtocolVersion {
     versions: u128,
@@ -8,6 +12,7 @@ pub struct ProtocolVersion {
 }
 
 impl ProtocolVersion {
+    /// Create a new object based on the version string
     pub fn new(versions: &str) -> Result<Self, SqrlError> {
         let mut prot = ProtocolVersion {
             versions: 0,
@@ -55,6 +60,8 @@ impl ProtocolVersion {
         Ok(prot)
     }
 
+    /// Compares two protocol version objects, returning the highest version
+    /// supported by both
     pub fn get_max_matching_version(&self, other: &ProtocolVersion) -> Result<u8, SqrlError> {
         let min_max = if self.max_version > other.max_version {
             other.max_version

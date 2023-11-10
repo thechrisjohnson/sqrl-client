@@ -1,3 +1,5 @@
+//! Code needed for SQRL client and server communication
+
 pub mod client_request;
 pub mod protocol_version;
 pub mod server_response;
@@ -10,20 +12,8 @@ use base64::{prelude::BASE64_URL_SAFE_NO_PAD, Engine};
 use ed25519_dalek::{Signature, VerifyingKey};
 use std::collections::HashMap;
 
-// The list of supported versions
+/// The current list of supported versions
 pub const PROTOCOL_VERSIONS: &str = "1";
-
-// Constants for the Server TIF
-pub const SERVER_TIF_CURRENT_ID_MATCH: u16 = 0x1;
-pub const SERVER_TIF_PREV_ID_MATCH: u16 = 0x2;
-pub const SERVER_TIF_IPS_MATCH: u16 = 0x4;
-pub const SERVER_TIF_SQRL_DISABLED: u16 = 0x8;
-pub const SERVER_TIF_FUNCTION_NOT_SUPPORTED: u16 = 0x10;
-pub const SERVER_TIF_TRANSIENT_ERROR: u16 = 0x20;
-pub const SERVER_TIF_COMMAND_FAILED: u16 = 0x40;
-pub const SERVER_TIF_CLIENT_FAILURE: u16 = 0x80;
-pub const SERVER_TIF_BAD_ID: u16 = 0x100;
-pub const SERVER_TIF_IDENTITY_SUPERSEDED: u16 = 0x200;
 
 pub(crate) fn get_or_error(
     map: &HashMap<String, String>,
