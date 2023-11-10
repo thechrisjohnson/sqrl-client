@@ -1,3 +1,5 @@
+//! Common code used by both SQRL clients and servers
+
 use crate::error::SqrlError;
 use ed25519_dalek::VerifyingKey;
 use sha2::{Digest, Sha256};
@@ -5,14 +7,17 @@ use std::fmt;
 use url::Url;
 use x25519_dalek::PublicKey;
 
+/// The general protocl for SQRL urls
 pub const SQRL_PROTOCOL: &str = "sqrl";
 
+/// Parses a SQRL url and breaks it into its parts
 #[derive(Debug, PartialEq)]
 pub struct SqrlUrl {
     url: Url,
 }
 
 impl SqrlUrl {
+    /// Parse a SQRL url string and convert it into the object
     pub fn parse(url: &str) -> Result<Self, SqrlError> {
         let parsed = Url::parse(url)?;
         if parsed.scheme() != SQRL_PROTOCOL {
@@ -31,6 +36,7 @@ impl SqrlUrl {
         Ok(SqrlUrl { url: parsed })
     }
 
+    /// Get the auth domain used for calculating identities
     pub fn get_auth_domain(&self) -> String {
         format!("{}{}", self.get_domain(), self.get_path())
     }
@@ -51,12 +57,16 @@ impl fmt::Display for SqrlUrl {
     }
 }
 
+/// THe keys needed to unlock a SQRL identity
 pub struct IdentityUnlockKeys {
+    /// The server unlock key (aka the public portion of a Diffie-Helman key)
     pub server_unlock_key: PublicKey,
+    /// The verify unlock key (aka the public portion of a signing keypair)
     pub verify_unlock_key: VerifyingKey,
 }
 
 impl IdentityUnlockKeys {
+    /// Create an identity unlock key pair from existing keys
     pub fn new(server_unlock_key: PublicKey, verify_unlock_key: VerifyingKey) -> Self {
         IdentityUnlockKeys {
             server_unlock_key,

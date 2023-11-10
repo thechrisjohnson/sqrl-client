@@ -1,3 +1,5 @@
+//! All of the code needed for sending client requests to a SQRL server
+
 use super::{
     decode_public_key, decode_signature, get_or_error, parse_newline_data, parse_query_data,
     protocol_version::ProtocolVersion, server_response::ServerResponse, PROTOCOL_VERSIONS,
@@ -7,15 +9,22 @@ use base64::{prelude::BASE64_URL_SAFE_NO_PAD, Engine};
 use ed25519_dalek::{Signature, VerifyingKey};
 use std::{convert::TryFrom, fmt, str::FromStr};
 
+/// A client request to a server
 pub struct ClientRequest {
+    /// The client parameters
     pub client_params: ClientParameters,
+    /// The previous server response, or the sqrl url if the first request
     pub server: ServerData,
+    /// The signature of this request
     pub ids: Signature,
+    /// The signature of this request using a previous identity
     pub pids: Option<Signature>,
+    /// The unlock request signature for an identity unlock
     pub urs: Option<String>,
 }
 
 impl ClientRequest {
+    /// Generate a new client request
     pub fn new(client_params: ClientParameters, server: ServerData, ids: Signature) -> Self {
         ClientRequest {
             client_params,
@@ -26,6 +35,7 @@ impl ClientRequest {
         }
     }
 
+    /// Parse a client request from a query string
     pub fn from_query_string(query_string: &str) -> Result<Self, SqrlError> {
         let map = parse_query_data(query_string)?;
         let client_parameters_string = get_or_error(
@@ -55,6 +65,7 @@ impl ClientRequest {
         })
     }
 
+    /// Convert a client request to the query string to add in the request
     pub fn to_query_string(&self) -> String {
         let mut result = format!("client={}", self.client_params.encode());
         result += &format!("&server={}", self.server);
@@ -73,6 +84,7 @@ impl ClientRequest {
         result
     }
 
+    /// Get the portion of the client request that is signed
     pub fn get_signed_string(&self) -> String {
         format!(
             "{}{}",
@@ -82,21 +94,33 @@ impl ClientRequest {
     }
 }
 
+/// Parameters used for sending requests to the client
 #[derive(Debug, PartialEq)]
 pub struct ClientParameters {
+    /// The supported protocol versions of the client
     pub ver: ProtocolVersion,
+    /// The client command requested to be performed
     pub cmd: ClientCommand,
+    /// The client identity used to sign the request
     pub idk: VerifyingKey,
+    /// Optional options requested by the client
     pub opt: Option<Vec<ClientOption>>,
+    /// The button pressed in response to a server query
     pub btn: Option<u8>,
+    /// A previous client identity used to sign the request
     pub pidk: Option<VerifyingKey>,
+    /// The current identity secret index in response to a server query
     pub ins: Option<String>,
+    /// The previous identity secret index in response to a server query
     pub pins: Option<String>,
+    /// The server unlock key used for unlocking an identity
     pub suk: Option<String>,
+    /// The verify unlock key used for unlocking an identity
     pub vuk: Option<String>,
 }
 
 impl ClientParameters {
+    /// Create a new client parameter using the command and verifying key
     pub fn new(cmd: ClientCommand, idk: VerifyingKey) -> ClientParameters {
         ClientParameters {
             ver: ProtocolVersion::new(PROTOCOL_VERSIONS).unwrap(),
@@ -112,6 +136,7 @@ impl ClientParameters {
         }
     }
 
+    /// Parse a base64-encoded client parameter value
     pub fn from_base64(base64_string: &str) -> Result<Self, SqrlError> {
         let query_string = String::from_utf8(BASE64_URL_SAFE_NO_PAD.decode(base64_string)?)?;
         let map = parse_newline_data(&query_string)?;
@@ -167,6 +192,7 @@ impl ClientParameters {
         })
     }
 
+    /// base64-encode this client parameter object
     pub fn encode(&self) -> String {
         let mut result = format!("ver={}", self.ver);
         result += &format!("\ncmd={}", self.cmd);
@@ -201,12 +227,18 @@ impl ClientParameters {
     }
 }
 
+/// The commands a client can request of the server
 #[derive(Debug, PartialEq)]
 pub enum ClientCommand {
+    /// A query to determine which client identity the server knows
     Query,
+    /// A request to verify and accept the client's identity assertion
     Ident,
+    /// A request to disable the client identity on the server
     Disable,
+    /// A request to re-enable the client identity on the server
     Enable,
+    /// A request to remove the client identity from the server
     Remove,
 }
 
@@ -235,12 +267,22 @@ impl From<String> for ClientCommand {
     }
 }
 
+/// Request options included in a client request
 #[derive(Debug, PartialEq)]
 pub enum ClientOption {
+    /// A request to the server to not restrict client requests from only the
+    /// ip address that initially queried the server
     NoIPTest,
+    /// A request to the server to only allow SQRL auth for authentication
     SQRLOnly,
+    /// A request to the server to not allow side-channel auth change requests
+    /// e.g. email, backup code, etc.
     Hardlock,
+    /// An option to inform the server that the SQRL client has a secure method
+    /// of sending data back to the client's web browser
     ClientProvidedSession,
+    /// A request to the server to return the client identity's server unlock
+    /// key
     ServerUnlockKey,
 }
 
@@ -295,13 +337,26 @@ impl TryFrom<&str> for ClientOption {
     }
 }
 
+/// The previous server response to add to the next client request, or the
+/// SQRL url for the first request
 #[derive(Debug, PartialEq)]
 pub enum ServerData {
-    Url { url: SqrlUrl },
-    ServerResponse { server_response: ServerResponse },
+    /// During the first request sent to a server, the server data is set as
+    /// the first SQRL protocol url used to auth against the server
+    Url {
+        /// The first SQRL url called
+        url: SqrlUrl,
+    },
+    /// Any request after the first one includes the server response to the
+    /// previous client request
+    ServerResponse {
+        /// The previous response to the client's request
+        server_response: ServerResponse,
+    },
 }
 
 impl ServerData {
+    /// Parse the base64-encoded server data
     pub fn from_base64(base64_string: &str) -> Result<Self, SqrlError> {
         let data = String::from_utf8(BASE64_URL_SAFE_NO_PAD.decode(base64_string)?)?;
         if let Ok(parsed) = SqrlUrl::parse(&data) {
@@ -314,6 +369,7 @@ impl ServerData {
         }
     }
 
+    /// base64-encode the server data
     pub fn to_base64(&self) -> String {
         match self {
             ServerData::Url { url } => BASE64_URL_SAFE_NO_PAD.encode(url.to_string().as_bytes()),

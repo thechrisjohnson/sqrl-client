@@ -1,11 +1,15 @@
+//! A common error used by SQRL clients and servers
+
 use scrypt::errors::{InvalidOutputLen, InvalidParams};
 use std::{fmt, num::ParseIntError, string::FromUtf8Error};
 
+/// An error that can occur in the SQRL library
 pub struct SqrlError {
     error_message: String,
 }
 
 impl SqrlError {
+    /// Create a new SqrlError with the string as error message
     pub fn new(error: String) -> Self {
         SqrlError {
             error_message: error,

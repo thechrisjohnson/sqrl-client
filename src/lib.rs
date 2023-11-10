@@ -1,3 +1,8 @@
+//! An implementation of the SQRL protocol in rust.
+//!
+//! <https://grc.com/sqrl>
+
+#![deny(missing_docs)]
 pub mod client;
 pub mod common;
 pub mod error;
