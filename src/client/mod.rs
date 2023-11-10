@@ -176,7 +176,7 @@ impl SqrlClient {
         let private_key =
             self.get_private_key(password, &sqrl_url.get_auth_domain(), alternate_identity)?;
 
-        request.client_params.idk = private_key.verifying_key();
+        request.client_params.identity_key = private_key.verifying_key();
 
         if let Some(prev) = &self.previous_identities {
             let key_index = previous_key_index.unwrap_or(0);
@@ -189,14 +189,15 @@ impl SqrlClient {
             {
                 let previous_private_key = previous_key
                     .get_private_key(&sqrl_url.get_auth_domain(), alternate_identity)?;
-                request.client_params.pidk = Some(previous_private_key.verifying_key());
-                request.pids =
+                request.client_params.previous_identity_key =
+                    Some(previous_private_key.verifying_key());
+                request.previous_identity_signature =
                     Some(previous_private_key.sign(request.get_signed_string().as_bytes()));
             }
         }
 
         // Sign last, as we need to set the current and previous key ids
-        request.ids = private_key.sign(request.get_signed_string().as_bytes());
+        request.identity_signature = private_key.sign(request.get_signed_string().as_bytes());
 
         Ok(())
     }
