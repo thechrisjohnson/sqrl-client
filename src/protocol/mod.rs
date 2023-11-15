@@ -87,7 +87,7 @@ pub(crate) fn parse_newline_data(data: &str) -> Result<HashMap<String, String>, 
     Ok(map)
 }
 
-pub(crate) fn encode_newline_data(map: &HashMap<String, String>) -> String {
+pub(crate) fn encode_newline_data(map: &HashMap<&str, &str>) -> String {
     let mut result = String::new();
     for (key, value) in map.iter() {
         result += &format!("\n{key}={value}");

@@ -6,10 +6,10 @@ use super::{
     server_response::{ServerResponse, TIFValue},
     PROTOCOL_VERSIONS,
 };
-use crate::{common::SqrlUrl, error::SqrlError};
+use crate::{common::SqrlUrl, error::SqrlError, protocol::encode_newline_data};
 use base64::{prelude::BASE64_URL_SAFE_NO_PAD, Engine};
 use ed25519_dalek::{Signature, VerifyingKey};
-use std::{convert::TryFrom, fmt, str::FromStr};
+use std::{collections::HashMap, convert::TryFrom, fmt, str::FromStr};
 
 // Keys used for encoding ClientRequest
 const CLIENT_PARAMETERS_KEY: &str = "client";
@@ -99,7 +99,11 @@ impl ClientRequest {
 
     /// Convert a client request to the query string to add in the request
     pub fn to_query_string(&self) -> String {
-        let mut result = format!("{}={}", CLIENT_PARAMETERS_KEY, self.client_params.encode());
+        let mut result = format!(
+            "{}={}",
+            CLIENT_PARAMETERS_KEY,
+            self.client_params.to_base64()
+        );
         result += &format!("&{}={}", SERVER_DATA_KEY, self.server_data);
         result += &format!(
             "&{}={}",
@@ -129,7 +133,7 @@ impl ClientRequest {
     pub fn get_signed_string(&self) -> String {
         format!(
             "{}{}",
-            self.client_params.encode(),
+            self.client_params.to_base64(),
             &self.server_data.to_base64()
         )
     }
@@ -229,8 +233,69 @@ impl ClientParameters {
     /// Parse a base64-encoded client parameter value
     pub fn from_base64(base64_string: &str) -> Result<Self, SqrlError> {
         let query_string = String::from_utf8(BASE64_URL_SAFE_NO_PAD.decode(base64_string)?)?;
-        let map = parse_newline_data(&query_string)?;
+        Self::from_str(&query_string)
+    }
 
+    /// base64-encode this client parameter object
+    pub fn to_base64(&self) -> String {
+        BASE64_URL_SAFE_NO_PAD.encode(self.to_string().as_bytes())
+    }
+
+    /// Verify the client request is valid
+    pub fn validate(&self) -> Result<(), SqrlError> {
+        Ok(())
+    }
+}
+
+impl fmt::Display for ClientParameters {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut map = HashMap::<&str, &str>::new();
+        let protocol = self.protocol_version.to_string();
+        map.insert(PROTOCOL_VERSION_KEY, &protocol);
+        let command = self.command.to_string();
+        map.insert(COMMAND_KEY, &command);
+
+        let identity_key = BASE64_URL_SAFE_NO_PAD.encode(self.identity_key.as_bytes());
+        map.insert(IDENTITY_KEY_KEY, &identity_key);
+
+        let options_string: String;
+        if let Some(options) = &self.options {
+            options_string = ClientOption::to_option_string(options);
+            map.insert(OPTIONS_KEY, &options_string);
+        }
+        let button_string: String;
+        if let Some(button) = &self.button {
+            button_string = button.to_string();
+            map.insert(BUTTON_KEY, &button_string);
+        }
+        let previous_identity_key_string: String;
+        if let Some(previous_identity_key) = &self.previous_identity_key {
+            previous_identity_key_string =
+                BASE64_URL_SAFE_NO_PAD.encode(previous_identity_key.as_bytes());
+            map.insert(PREVIOUS_IDENTITY_KEY_KEY, &previous_identity_key_string);
+        }
+        if let Some(index_secret) = &self.index_secret {
+            map.insert(INDEX_SECRET_KEY, index_secret);
+        }
+        if let Some(previous_index_secret) = &self.previous_index_secret {
+            map.insert(PREVIOUS_INDEX_SECRET_KEY, previous_index_secret);
+        }
+        if let Some(server_unlock_key) = &self.server_unlock_key {
+            map.insert(SERVER_UNLOCK_KEY_KEY, server_unlock_key);
+        }
+        if let Some(verify_unlock_key) = &self.verify_unlock_key {
+            map.insert(VERIFY_UNLOCK_KEY_KEY, verify_unlock_key);
+        }
+
+        write!(f, "{}", &encode_newline_data(&map))
+    }
+}
+
+impl FromStr for ClientParameters {
+    type Err = SqrlError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let map = parse_newline_data(s)?;
         // Validate the protocol version is supported
         let ver_string = get_or_error(
             &map,
@@ -288,54 +353,6 @@ impl ClientParameters {
             server_unlock_key,
             verify_unlock_key,
         })
-    }
-
-    /// base64-encode this client parameter object
-    pub fn encode(&self) -> String {
-        let mut result = format!("{}={}", PROTOCOL_VERSION_KEY, self.protocol_version);
-        result += &format!("\n{}={}", COMMAND_KEY, self.command);
-        result += &format!(
-            "\n{}={}",
-            IDENTITY_KEY_KEY,
-            BASE64_URL_SAFE_NO_PAD.encode(self.identity_key.as_bytes())
-        );
-
-        if let Some(options) = &self.options {
-            result += &format!(
-                "\n{}={}",
-                OPTIONS_KEY,
-                ClientOption::to_option_string(options)
-            );
-        }
-        if let Some(button) = &self.button {
-            result += &format!("\n{}={}", BUTTON_KEY, button);
-        }
-        if let Some(previous_identity_key) = &self.previous_identity_key {
-            result += &format!(
-                "\n{}={}",
-                PREVIOUS_IDENTITY_KEY_KEY,
-                BASE64_URL_SAFE_NO_PAD.encode(previous_identity_key.as_bytes())
-            );
-        }
-        if let Some(index_secret) = &self.index_secret {
-            result += &format!("\n{}={}", INDEX_SECRET_KEY, index_secret);
-        }
-        if let Some(previous_index_secret) = &self.previous_index_secret {
-            result += &format!("\n{}={}", PREVIOUS_INDEX_SECRET_KEY, previous_index_secret);
-        }
-        if let Some(server_unlock_key) = &self.server_unlock_key {
-            result += &format!("\n{}={}", SERVER_UNLOCK_KEY_KEY, server_unlock_key);
-        }
-        if let Some(verify_unlock_key) = &self.verify_unlock_key {
-            result += &format!("\n{}={}", VERIFY_UNLOCK_KEY_KEY, verify_unlock_key);
-        }
-
-        BASE64_URL_SAFE_NO_PAD.encode(result)
-    }
-
-    /// Verify the client request is valid
-    pub fn validate(&self) -> Result<(), SqrlError> {
-        Ok(())
     }
 }
 
@@ -540,7 +557,7 @@ mod tests {
             ClientOption::ServerUnlockKey,
         ]);
 
-        let decoded = ClientParameters::from_base64(&params.encode()).unwrap();
+        let decoded = ClientParameters::from_base64(&params.to_base64()).unwrap();
         assert_eq!(params, decoded);
     }
 
