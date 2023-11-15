@@ -80,35 +80,34 @@ impl ServerResponse {
 
 impl fmt::Display for ServerResponse {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut map = HashMap::<String, String>::new();
-        map.insert(
-            PROTOCOL_VERSION_KEY.to_owned(),
-            format!("{}", self.protocol_version),
-        );
-        map.insert(NUT_KEY.to_owned(), self.nut.to_owned());
+        let mut map = HashMap::<&str, &str>::new();
+        let protocol = self.protocol_version.to_string();
+        map.insert(PROTOCOL_VERSION_KEY, &protocol);
+        map.insert(NUT_KEY, &self.nut);
 
         let mut tif: u16 = 0;
         for t in &self.transaction_indication_flags {
             tif |= *t as u16;
         }
 
-        map.insert(TIF_KEY.to_owned(), format!("{}", tif));
-        map.insert(QUERY_URL_KEY.to_owned(), self.query_url.to_owned());
+        let tif_string = tif.to_string();
+        map.insert(TIF_KEY, &tif_string);
+        map.insert(QUERY_URL_KEY, &self.query_url);
 
         if let Some(url) = &self.success_url {
-            map.insert(SUCCESS_URL_KEY.to_owned(), url.to_owned());
+            map.insert(SUCCESS_URL_KEY, url);
         }
         if let Some(can) = &self.cancel_url {
-            map.insert(CANCEL_URL_KEY.to_owned(), can.to_owned());
+            map.insert(CANCEL_URL_KEY, can);
         }
         if let Some(sin) = &self.secret_index {
-            map.insert(SECRET_INDEX_KEY.to_owned(), sin.to_owned());
+            map.insert(SECRET_INDEX_KEY, sin);
         }
         if let Some(suk) = &self.server_unlock_key {
-            map.insert(SERVER_UNLOCK_KEY_KEY.to_owned(), suk.to_owned());
+            map.insert(SERVER_UNLOCK_KEY_KEY, suk);
         }
         if let Some(ask) = &self.ask {
-            map.insert(ASK_KEY.to_owned(), ask.to_owned());
+            map.insert(ASK_KEY, ask);
         }
 
         write!(f, "{}", &encode_newline_data(&map))
