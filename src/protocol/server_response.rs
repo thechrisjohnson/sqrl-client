@@ -8,54 +8,59 @@ use crate::error::SqrlError;
 use base64::{prelude::BASE64_URL_SAFE_NO_PAD, Engine};
 use std::{collections::HashMap, fmt, str::FromStr};
 
-const VER_KEY: &str = "ver";
+// The keys used to encode a server response
+const PROTOCOL_VERSION_KEY: &str = "ver";
 const NUT_KEY: &str = "nut";
 const TIF_KEY: &str = "tif";
-const QRY_KEY: &str = "qry";
-const URL_KEY: &str = "url";
-const CAN_KEY: &str = "can";
-const SIN_KEY: &str = "sin";
-const SUK_KEY: &str = "suk";
+const QUERY_URL_KEY: &str = "qry";
+const SUCCESS_URL_KEY: &str = "url";
+const CANCEL_URL_KEY: &str = "can";
+const SECRET_INDEX_KEY: &str = "sin";
+const SERVER_UNLOCK_KEY_KEY: &str = "suk";
 const ASK_KEY: &str = "ask";
 
 /// An object representing a response from the server
 #[derive(Debug, PartialEq)]
 pub struct ServerResponse {
-    /// The SQRL protocol versions supported by the server
-    pub ver: ProtocolVersion,
-    /// The nut to be used for signing the next request
+    /// The SQRL protocol versions supported by the server (ver)
+    pub protocol_version: ProtocolVersion,
+    /// The nut to be used for signing the next request (nut)
     pub nut: String,
-    /// A collection of transaction indication flags
-    pub tif: Vec<TIFValue>,
-    /// The server object to query in the next request
-    pub qry: String,
+    /// A collection of transaction indication flags (tif)
+    pub transaction_indication_flags: Vec<TIFValue>,
+    /// The server object to query in the next request (qry)
+    pub query_url: String,
     /// If CPS set, the url to redirect the client's browser to after
-    /// successful authentication
-    pub url: Option<String>,
-    /// If CPS set, a url to use to cancel a user's authentication
-    pub can: Option<String>,
+    /// successful authentication (url)
+    pub success_url: Option<String>,
+    /// If CPS set, a url to use to cancel a user's authentication (can)
+    pub cancel_url: Option<String>,
     /// The secret index used for requesting a client to return an indexed
-    /// secret
-    pub sin: Option<String>,
-    /// The server unlock key requested by the client
-    pub suk: Option<String>,
+    /// secret (sin)
+    pub secret_index: Option<String>,
+    /// The server unlock key requested by the client (suk)
+    pub server_unlock_key: Option<String>,
     /// A way for the server to request that the client display a prompt to the
-    /// client user and return the selection
+    /// client user and return the selection (ask)
     pub ask: Option<String>,
 }
 
 impl ServerResponse {
     /// Create a new server response object from the nut and tif values
-    pub fn new(nut: String, tif: Vec<TIFValue>, qry: String) -> ServerResponse {
+    pub fn new(
+        nut: String,
+        transaction_indication_flags: Vec<TIFValue>,
+        query_url: String,
+    ) -> ServerResponse {
         ServerResponse {
-            ver: ProtocolVersion::new(PROTOCOL_VERSIONS).unwrap(),
+            protocol_version: ProtocolVersion::new(PROTOCOL_VERSIONS).unwrap(),
             nut,
-            tif,
-            qry,
-            url: None,
-            can: None,
-            sin: None,
-            suk: None,
+            transaction_indication_flags,
+            query_url,
+            success_url: None,
+            cancel_url: None,
+            secret_index: None,
+            server_unlock_key: None,
             ask: None,
         }
     }
@@ -76,28 +81,31 @@ impl ServerResponse {
 impl fmt::Display for ServerResponse {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut map = HashMap::<String, String>::new();
-        map.insert(VER_KEY.to_owned(), format!("{}", self.ver));
+        map.insert(
+            PROTOCOL_VERSION_KEY.to_owned(),
+            format!("{}", self.protocol_version),
+        );
         map.insert(NUT_KEY.to_owned(), self.nut.to_owned());
 
         let mut tif: u16 = 0;
-        for t in &self.tif {
+        for t in &self.transaction_indication_flags {
             tif |= *t as u16;
         }
 
         map.insert(TIF_KEY.to_owned(), format!("{}", tif));
-        map.insert(QRY_KEY.to_owned(), self.qry.to_owned());
+        map.insert(QUERY_URL_KEY.to_owned(), self.query_url.to_owned());
 
-        if let Some(url) = &self.url {
-            map.insert(URL_KEY.to_owned(), url.to_owned());
+        if let Some(url) = &self.success_url {
+            map.insert(SUCCESS_URL_KEY.to_owned(), url.to_owned());
         }
-        if let Some(can) = &self.can {
-            map.insert(CAN_KEY.to_owned(), can.to_owned());
+        if let Some(can) = &self.cancel_url {
+            map.insert(CANCEL_URL_KEY.to_owned(), can.to_owned());
         }
-        if let Some(sin) = &self.sin {
-            map.insert(SIN_KEY.to_owned(), sin.to_owned());
+        if let Some(sin) = &self.secret_index {
+            map.insert(SECRET_INDEX_KEY.to_owned(), sin.to_owned());
         }
-        if let Some(suk) = &self.suk {
-            map.insert(SUK_KEY.to_owned(), suk.to_owned());
+        if let Some(suk) = &self.server_unlock_key {
+            map.insert(SERVER_UNLOCK_KEY_KEY.to_owned(), suk.to_owned());
         }
         if let Some(ask) = &self.ask {
             map.insert(ASK_KEY.to_owned(), ask.to_owned());
@@ -114,30 +122,38 @@ impl FromStr for ServerResponse {
         let data = parse_newline_data(s)?;
 
         // Validate the protocol version is supported
-        let ver_string = get_or_error(&data, VER_KEY, "No version number in server response")?;
-        let ver = ProtocolVersion::new(&ver_string)?;
+        let ver_string = get_or_error(
+            &data,
+            PROTOCOL_VERSION_KEY,
+            "No version number in server response",
+        )?;
+        let protocol_version = ProtocolVersion::new(&ver_string)?;
         let nut = get_or_error(&data, NUT_KEY, "No nut in server response")?;
         let tif_string = get_or_error(&data, TIF_KEY, "No status code (tif) in server response")?;
-        let tif = TIFValue::parse_str(&tif_string)?;
+        let transaction_indication_flags = TIFValue::parse_str(&tif_string)?;
 
-        let qry = get_or_error(&data, QRY_KEY, "No status code (tif) in server response")?;
+        let query_url = get_or_error(
+            &data,
+            QUERY_URL_KEY,
+            "No query url (qry) in server response",
+        )?;
 
         // The rest of these are optional
-        let url = data.get(URL_KEY).map(|x| x.to_string());
-        let can = data.get(CAN_KEY).map(|x| x.to_string());
-        let sin = data.get(SIN_KEY).map(|x| x.to_string());
-        let suk = data.get(SUK_KEY).map(|x| x.to_string());
+        let success_url = data.get(SUCCESS_URL_KEY).map(|x| x.to_string());
+        let cancel_url = data.get(CANCEL_URL_KEY).map(|x| x.to_string());
+        let secret_index = data.get(SECRET_INDEX_KEY).map(|x| x.to_string());
+        let server_unlock_key = data.get(SERVER_UNLOCK_KEY_KEY).map(|x| x.to_string());
         let ask = data.get(ASK_KEY).map(|x| x.to_string());
 
         Ok(ServerResponse {
-            ver,
+            protocol_version,
             nut,
-            tif,
-            qry,
-            url,
-            can,
-            sin,
-            suk,
+            transaction_indication_flags,
+            query_url,
+            success_url,
+            cancel_url,
+            secret_index,
+            server_unlock_key,
             ask,
         })
     }
@@ -234,11 +250,11 @@ mod tests {
     #[test]
     fn server_response_validate_example() {
         let response = ServerResponse::from_base64(TEST_SERVER_RESPONSE).unwrap();
-        assert_eq!(response.ver.to_string(), "1");
+        assert_eq!(response.protocol_version.to_string(), "1");
         assert_eq!(response.nut, "1WM9lfF1ST-z");
-        assert_eq!(response.qry, "/cli.sqrl?nut=1WM9lfF1ST-z");
+        assert_eq!(response.query_url, "/cli.sqrl?nut=1WM9lfF1ST-z");
         assert_eq!(
-            response.suk.unwrap(),
+            response.server_unlock_key.unwrap(),
             "BMFDm7bPlsQojuJsoDTvlS1McnwgScvktF84vLjscGk"
         )
     }

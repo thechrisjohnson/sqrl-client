@@ -13,7 +13,7 @@ pub fn validate_client_request(
     // Try to verify the signatures
     expected_key.verify(
         client_request.get_signed_string().as_bytes(),
-        &client_request.ids,
+        &client_request.identity_signature,
     )?;
 
     Ok(())
