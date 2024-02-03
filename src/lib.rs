@@ -7,7 +7,6 @@ pub mod client;
 pub mod common;
 pub mod error;
 pub mod protocol;
-pub mod server;
 
 extern crate aes_gcm;
 extern crate base64;
