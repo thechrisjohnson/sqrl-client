@@ -5,7 +5,7 @@ pub mod protocol_version;
 pub mod server_response;
 
 use crate::{
-    common::{vec_to_u8_32, vec_to_u8_64},
+    common::{slice_to_u8_32, slice_to_u8_64},
     error::SqrlError,
 };
 use base64::{prelude::BASE64_URL_SAFE_NO_PAD, Engine};
@@ -41,7 +41,7 @@ pub(crate) fn parse_query_data(query: &str) -> Result<HashMap<String, String>, S
 pub(crate) fn decode_public_key(key: &str) -> Result<VerifyingKey, SqrlError> {
     let bytes: [u8; 32];
     match BASE64_URL_SAFE_NO_PAD.decode(key) {
-        Ok(x) => bytes = vec_to_u8_32(&x)?,
+        Ok(x) => bytes = slice_to_u8_32(&x)?,
         Err(_) => {
             return Err(SqrlError::new(format!(
                 "Failed to decode base64 encoded public key {}",
@@ -62,7 +62,7 @@ pub(crate) fn decode_public_key(key: &str) -> Result<VerifyingKey, SqrlError> {
 pub(crate) fn decode_signature(key: &str) -> Result<Signature, SqrlError> {
     let bytes: [u8; 64];
     match BASE64_URL_SAFE_NO_PAD.decode(key) {
-        Ok(x) => bytes = vec_to_u8_64(&x)?,
+        Ok(x) => bytes = slice_to_u8_64(&x)?,
         Err(_) => {
             return Err(SqrlError::new(format!(
                 "Failed to decode base64 encoded signature {}",
