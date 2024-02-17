@@ -13,7 +13,7 @@ use self::{
     writable_datablock::WritableDataBlock,
 };
 use crate::{
-    common::{en_hash, vec_to_u8_32, IdentityUnlockKeys, SqrlUrl},
+    common::{en_hash, slice_to_u8_32, IdentityUnlockKeys, SqrlUrl},
     error::SqrlError,
     protocol::client_request::ClientRequest,
 };
@@ -625,7 +625,7 @@ impl GetKey for IdentityKey {
             temp.push(i);
         }
 
-        Ok(SigningKey::from_bytes(&vec_to_u8_32(&temp)?))
+        Ok(SigningKey::from_bytes(&slice_to_u8_32(&temp)?))
     }
 }
 

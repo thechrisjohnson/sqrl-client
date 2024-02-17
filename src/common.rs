@@ -75,29 +75,29 @@ impl IdentityUnlockKeys {
     }
 }
 
-pub(crate) fn vec_to_u8_32(vector: &Vec<u8>) -> Result<[u8; 32], SqrlError> {
+pub(crate) fn slice_to_u8_32(slice: &[u8]) -> Result<[u8; 32], SqrlError> {
     let mut result = [0; 32];
-    if vector.len() != 32 {
+    if slice.len() != 32 {
         return Err(SqrlError::new(format!(
             "Error converting vec<u8> to [u8; 32]: Expected 32 bytes, but found {}",
-            vector.len()
+            slice.len()
         )));
     }
 
-    result[..32].copy_from_slice(&vector[..32]);
+    result[..32].copy_from_slice(&slice[..32]);
     Ok(result)
 }
 
-pub(crate) fn vec_to_u8_64(vector: &Vec<u8>) -> Result<[u8; 64], SqrlError> {
+pub(crate) fn slice_to_u8_64(slice: &[u8]) -> Result<[u8; 64], SqrlError> {
     let mut result = [0; 64];
-    if vector.len() != 64 {
+    if slice.len() != 64 {
         return Err(SqrlError::new(format!(
             "Error converting vec<u8> to [u8; 64]: Expected 64 bytes, but found {}",
-            vector.len()
+            slice.len()
         )));
     }
 
-    result[..64].copy_from_slice(&vector[..64]);
+    result[..64].copy_from_slice(&slice[..64]);
     Ok(result)
 }
 
