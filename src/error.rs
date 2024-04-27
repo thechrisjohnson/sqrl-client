@@ -85,6 +85,12 @@ impl From<ParseIntError> for SqrlError {
     }
 }
 
+impl From<sqrl_protocol::error::SqrlError> for SqrlError {
+    fn from(value: sqrl_protocol::error::SqrlError) -> Self {
+        SqrlError::new(value.to_string())
+    }
+}
+
 impl fmt::Display for SqrlError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.error_message)

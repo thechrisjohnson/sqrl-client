@@ -6,7 +6,6 @@
 pub mod client;
 pub mod common;
 pub mod error;
-pub mod protocol;
 
 extern crate aes_gcm;
 extern crate base64;
@@ -18,5 +17,6 @@ extern crate num_traits;
 extern crate rand;
 extern crate scrypt;
 extern crate sha2;
+extern crate sqrl_protocol;
 extern crate url;
 extern crate x25519_dalek;

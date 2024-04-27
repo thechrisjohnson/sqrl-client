@@ -13,9 +13,8 @@ use self::{
     writable_datablock::WritableDataBlock,
 };
 use crate::{
-    common::{en_hash, slice_to_u8_32, IdentityUnlockKeys, SqrlUrl},
+    common::{en_hash, slice_to_u8_32, IdentityUnlockKeys},
     error::SqrlError,
-    protocol::client_request::ClientRequest,
 };
 use aes_gcm::aead::OsRng;
 use base64::{prelude::BASE64_URL_SAFE, Engine};
@@ -26,6 +25,7 @@ use num_bigint::BigUint;
 use num_traits::{FromPrimitive, ToPrimitive};
 use rand::RngCore;
 use sha2::{Digest, Sha256};
+use sqrl_protocol::{client_request::ClientRequest, SqrlUrl};
 use std::{collections::VecDeque, fs::File, io::Write};
 use x25519_dalek::{PublicKey, StaticSecret};
 
