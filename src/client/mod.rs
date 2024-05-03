@@ -491,7 +491,6 @@ impl SqrlClient {
     }
 }
 
-
 /// The configuration options that can be set on a SQRLClient
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ConfigOptions {
