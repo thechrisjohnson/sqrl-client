@@ -39,22 +39,6 @@ const TEXT_IDENTITY_ALPHABET: [char; 56] = [
     'g', 'h', 'i', 'j', 'k', 'm', 'n', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
 ];
 
-trait SqrlStorage
-where
-    Self: Sized,
-{
-    fn from_file(file_path: &str) -> Result<Self, SqrlError>;
-    fn to_file(&self, file_path: &str) -> Result<(), SqrlError>;
-    fn from_base64(input: &str) -> Result<Self, SqrlError>;
-    fn to_base64(&self) -> Result<String, SqrlError>;
-    fn from_textual_identity_format(
-        input: &str,
-        rescue_code: &str,
-        new_password: &str,
-    ) -> Result<Self, SqrlError>;
-    fn to_textual_identity_format(&self) -> Result<String, SqrlError>;
-}
-
 // List of features needed in the client:
 // + Load data from binary format
 // + Load data from text based format
@@ -330,6 +314,73 @@ impl SqrlClient {
         )
     }
 
+    /// Load SqrlClient from file
+    pub fn from_file(file_path: &str) -> Result<Self, SqrlError> {
+        SqrlClient::from_binary(convert_vec(std::fs::read(file_path)?))
+    }
+
+    /// Save SqrlClient to file
+    pub fn to_file(&self, file_path: &str) -> Result<(), SqrlError> {
+        let mut file = File::create(file_path)?;
+        let data = self.to_binary()?;
+        file.write_all(&data)?;
+
+        Ok(())
+    }
+
+    /// Generate SqrlClient from base64 encoded data
+    pub fn from_base64(input: &str) -> Result<Self, SqrlError> {
+        // Confirm the beginning looks like what we expected
+        if input.len() < 8 || input[0..8] != FILE_HEADER.to_uppercase() {
+            return Err(SqrlError::new(format!(
+                "Invalid base64. Header text not valid: {}",
+                &input[0..8]
+            )));
+        }
+
+        // Decode the rest using base64
+        let data = match BASE64_URL_SAFE.decode(&input[8..]) {
+            Ok(data) => data,
+            Err(_) => return Err(SqrlError::new("Invalid binary data".to_owned())),
+        };
+
+        let mut binary = convert_vec(data);
+
+        // Add back the proper file header
+        for b in FILE_HEADER.bytes().rev() {
+            binary.push_front(b);
+        }
+
+        SqrlClient::from_binary(binary)
+    }
+
+    /// Convert SqrlClient to base64 encoding
+    pub fn to_base64(&self) -> Result<String, SqrlError> {
+        let data = self.to_binary()?;
+        Ok(BASE64_URL_SAFE.encode(data))
+    }
+
+    /// Take textual identity format and generate SqrlClient from it
+    pub fn from_textual_identity_format(
+        input: &str,
+        rescue_code: &str,
+        new_password: &str,
+    ) -> Result<Self, SqrlError> {
+        validate_textual_identity(input)?;
+        let mut data = decode_textual_identity(input)?;
+        if data.next_u16()? != 73 || DataType::from_binary(&mut data)? != DataType::RescueCode {
+            return Err(SqrlError::new("Invalid textual identity.".to_owned()));
+        }
+
+        let identity_unlock = IdentityUnlockData::from_binary(&mut data)?;
+        SqrlClient::from_identity_unlock(identity_unlock, rescue_code, new_password)
+    }
+
+    /// Generate textual identity format of client data
+    pub fn to_textual_identity_format(&self) -> Result<String, SqrlError> {
+        encode_textual_identity(self)
+    }
+
     fn get_private_key(
         &self,
         password: &str,
@@ -440,68 +491,6 @@ impl SqrlClient {
     }
 }
 
-impl SqrlStorage for SqrlClient {
-    fn from_file(file_path: &str) -> Result<Self, SqrlError> {
-        SqrlClient::from_binary(convert_vec(std::fs::read(file_path)?))
-    }
-
-    fn to_file(&self, file_path: &str) -> Result<(), SqrlError> {
-        let mut file = File::create(file_path)?;
-        let data = self.to_binary()?;
-        file.write_all(&data)?;
-
-        Ok(())
-    }
-
-    fn from_base64(input: &str) -> Result<Self, SqrlError> {
-        // Confirm the beginning looks like what we expected
-        if input.len() < 8 || input[0..8] != FILE_HEADER.to_uppercase() {
-            return Err(SqrlError::new(format!(
-                "Invalid base64. Header text not valid: {}",
-                &input[0..8]
-            )));
-        }
-
-        // Decode the rest using base64
-        let data = match BASE64_URL_SAFE.decode(&input[8..]) {
-            Ok(data) => data,
-            Err(_) => return Err(SqrlError::new("Invalid binary data".to_owned())),
-        };
-
-        let mut binary = convert_vec(data);
-
-        // Add back the proper file header
-        for b in FILE_HEADER.bytes().rev() {
-            binary.push_front(b);
-        }
-
-        SqrlClient::from_binary(binary)
-    }
-
-    fn to_base64(&self) -> Result<String, SqrlError> {
-        let data = self.to_binary()?;
-        Ok(BASE64_URL_SAFE.encode(data))
-    }
-
-    fn from_textual_identity_format(
-        input: &str,
-        rescue_code: &str,
-        new_password: &str,
-    ) -> Result<Self, SqrlError> {
-        validate_textual_identity(input)?;
-        let mut data = decode_textual_identity(input)?;
-        if data.next_u16()? != 73 || DataType::from_binary(&mut data)? != DataType::RescueCode {
-            return Err(SqrlError::new("Invalid textual identity.".to_owned()));
-        }
-
-        let identity_unlock = IdentityUnlockData::from_binary(&mut data)?;
-        SqrlClient::from_identity_unlock(identity_unlock, rescue_code, new_password)
-    }
-
-    fn to_textual_identity_format(&self) -> Result<String, SqrlError> {
-        encode_textual_identity(self)
-    }
-}
 
 /// The configuration options that can be set on a SQRLClient
 #[derive(Clone, Copy, Debug, PartialEq)]
