@@ -3,10 +3,10 @@ use super::{
     readable_vector::ReadableVector, writable_datablock::WritableDataBlock, DataType, IdentityKey,
 };
 use crate::error::SqrlError;
+use crate::AesVerificationData;
 use aes_gcm::aead::{AeadMut, Payload};
 use aes_gcm::{Aes256Gcm, KeyInit};
 use byteorder::{LittleEndian, WriteBytesExt};
-use client::AesVerificationData;
 use std::io::Write;
 use std::{collections::VecDeque, convert::TryInto};
 

@@ -1,6 +1,10 @@
 [package]
-name = "sqrl"
+name = "sqrl-client"
 version = "0.1.0"
+edition = "2021"
+description = "An rust implementation of client-side code for Secure Quick Reliable Login (SQRL)"
+license = "GPL-3.0-only"
+repository = "https://github.com/thechrisjohnson/sqrl"
 
 [dependencies]
 aes-gcm = "0.10.3"

@@ -1,7 +1,7 @@
 use super::{
     config_options_to_u16,
     readable_vector::ReadableVector,
-    scrypt::{en_scrypt, mut_en_scrypt, ScryptConfig},
+    scrypt_config::{en_scrypt, mut_en_scrypt, ScryptConfig},
     writable_datablock::WritableDataBlock,
     AesVerificationData, ConfigOptions, DataType, IdentityKey, IdentityUnlockKeys,
 };

@@ -1,5 +1,5 @@
 use super::readable_vector::ReadableVector;
-use super::scrypt::{en_scrypt, mut_en_scrypt, ScryptConfig};
+use super::scrypt_config::{en_scrypt, mut_en_scrypt, ScryptConfig};
 use super::writable_datablock::WritableDataBlock;
 use super::EMPTY_NONCE;
 use super::{AesVerificationData, DataType, IdentityKey};
