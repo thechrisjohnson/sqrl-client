@@ -1,20 +1,19 @@
-use super::readable_vector::ReadableVector;
-use super::scrypt_config::{en_scrypt, mut_en_scrypt, ScryptConfig};
-use super::writable_datablock::WritableDataBlock;
-use super::EMPTY_NONCE;
-use super::{AesVerificationData, DataType, IdentityKey};
-use crate::error::SqrlError;
-use aes_gcm::aead::{Aead, Payload};
-use aes_gcm::{Aes256Gcm, KeyInit};
+use crate::{
+    readable_vector::ReadableVector,
+    scrypt_config::{en_scrypt, mut_en_scrypt, ScryptConfig},
+    writable_datablock::WritableDataBlock,
+    AesVerificationData, DataType, IdentityKey, Result, EMPTY_NONCE,
+};
+use aes_gcm::{
+    aead::{Aead, Payload},
+    Aes256Gcm, KeyInit,
+};
 use byteorder::{LittleEndian, WriteBytesExt};
 use ed25519_dalek::SigningKey;
 use num_bigint::BigUint;
 use num_traits::ToPrimitive;
-use rand::prelude::StdRng;
-use rand::{RngCore, SeedableRng};
-use std::collections::VecDeque;
-use std::convert::TryInto;
-use std::io::Write;
+use rand::{prelude::StdRng, RngCore, SeedableRng};
+use std::{collections::VecDeque, convert::TryInto, io::Write};
 use x25519_dalek::{PublicKey, StaticSecret};
 
 const RESCUE_CODE_SCRYPT_TIME: u8 = 5;
@@ -28,7 +27,7 @@ pub(crate) struct IdentityUnlockData {
 }
 
 impl IdentityUnlockData {
-    pub(crate) fn new(identity_unlock_key: IdentityKey) -> Result<(Self, String), SqrlError> {
+    pub(crate) fn new(identity_unlock_key: IdentityKey) -> Result<(Self, String)> {
         let mut identity_unlock = IdentityUnlockData {
             scrypt_config: ScryptConfig::new(),
             identity_unlock_key: [0; 32],
@@ -44,7 +43,7 @@ impl IdentityUnlockData {
         &mut self,
         previous_rescue_code: &str,
         identity_unlock_key: IdentityKey,
-    ) -> Result<(String, IdentityKey), SqrlError> {
+    ) -> Result<(String, IdentityKey)> {
         let mut previous_identity_key = [0; 32];
         if self.identity_unlock_key != previous_identity_key {
             previous_identity_key = self.decrypt_identity_unlock_key(previous_rescue_code)?;
@@ -77,10 +76,7 @@ impl IdentityUnlockData {
         Ok((rescue_code, previous_identity_key))
     }
 
-    pub(crate) fn decrypt_identity_unlock_key(
-        &self,
-        rescue_code: &str,
-    ) -> Result<IdentityKey, SqrlError> {
+    pub(crate) fn decrypt_identity_unlock_key(&self, rescue_code: &str) -> Result<IdentityKey> {
         let mut unencrypted_data: [u8; 32] = [0; 32];
         let decoded_rescue_key = decode_rescue_code(rescue_code);
         let key = en_scrypt(decoded_rescue_key.as_bytes(), &self.scrypt_config)?;
@@ -114,7 +110,7 @@ impl IdentityUnlockData {
         &self,
         rescue_code: &str,
         server_unlock_key: [u8; 32],
-    ) -> Result<SigningKey, SqrlError> {
+    ) -> Result<SigningKey> {
         // Decrypt the identity unlock key and convert it to a DHKA secret key
         let unlock_key = self.decrypt_identity_unlock_key(rescue_code)?;
         let secret_key = StaticSecret::from(unlock_key);
@@ -124,7 +120,7 @@ impl IdentityUnlockData {
         Ok(SigningKey::from_bytes(shared_secret.as_bytes()))
     }
 
-    fn aad(&self) -> Result<Vec<u8>, SqrlError> {
+    fn aad(&self) -> Result<Vec<u8>> {
         let mut result = Vec::<u8>::new();
         result.write_u16::<LittleEndian>(self.len())?;
         self.get_type().to_binary(&mut result)?;
@@ -142,7 +138,7 @@ impl WritableDataBlock for IdentityUnlockData {
         73
     }
 
-    fn from_binary(binary: &mut VecDeque<u8>) -> Result<Self, SqrlError> {
+    fn from_binary(binary: &mut VecDeque<u8>) -> Result<Self> {
         Ok(IdentityUnlockData {
             scrypt_config: ScryptConfig::from_binary(binary)?,
             identity_unlock_key: binary.next_sub_array(32)?.as_slice().try_into()?,
@@ -150,7 +146,7 @@ impl WritableDataBlock for IdentityUnlockData {
         })
     }
 
-    fn to_binary_inner(&self, output: &mut Vec<u8>) -> Result<(), SqrlError> {
+    fn to_binary_inner(&self, output: &mut Vec<u8>) -> Result<()> {
         self.scrypt_config.to_binary(output)?;
         output.write_all(&self.identity_unlock_key)?;
         output.write_all(&self.verification_data)?;

@@ -1,5 +1,4 @@
-use super::readable_vector::ReadableVector;
-use crate::{common::xor, error::SqrlError};
+use crate::{common::xor, error::SqrlError, readable_vector::ReadableVector, Result};
 use byteorder::{LittleEndian, WriteBytesExt};
 use rand::{prelude::StdRng, RngCore, SeedableRng};
 use scrypt::{scrypt, Params};
@@ -29,7 +28,7 @@ impl ScryptConfig {
         }
     }
 
-    pub(crate) fn from_binary(binary: &mut VecDeque<u8>) -> Result<Self, SqrlError> {
+    pub(crate) fn from_binary(binary: &mut VecDeque<u8>) -> Result<Self> {
         Ok(ScryptConfig {
             random_salt: binary.next_sub_array(16)?.as_slice().try_into()?,
             log_n_factor: binary
@@ -39,7 +38,7 @@ impl ScryptConfig {
         })
     }
 
-    pub(crate) fn to_binary(&self, output: &mut Vec<u8>) -> Result<(), SqrlError> {
+    pub(crate) fn to_binary(&self, output: &mut Vec<u8>) -> Result<()> {
         output.write_all(&self.random_salt)?;
         output.push(self.log_n_factor);
         let iteration_factor = match self.iteration_factor {
@@ -60,7 +59,7 @@ pub(crate) fn mut_en_scrypt(
     password: &[u8],
     scrypt_config: &mut ScryptConfig,
     pw_verify_sec: u8,
-) -> Result<[u8; 32], SqrlError> {
+) -> Result<[u8; 32]> {
     let mut output: [u8; 32] = [0; 32];
     let mut input: [u8; 32] = [0; 32];
     let mut temp: [u8; 32] = [0; 32];
@@ -110,10 +109,7 @@ pub(crate) fn mut_en_scrypt(
     Ok(output)
 }
 
-pub(crate) fn en_scrypt(
-    password: &[u8],
-    scrypt_config: &ScryptConfig,
-) -> Result<[u8; 32], SqrlError> {
+pub(crate) fn en_scrypt(password: &[u8], scrypt_config: &ScryptConfig) -> Result<[u8; 32]> {
     let mut output: [u8; 32] = [0; 32];
     let mut input: [u8; 32] = [0; 32];
     let mut temp: [u8; 32] = [0; 32];
