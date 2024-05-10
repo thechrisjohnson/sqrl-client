@@ -40,13 +40,16 @@ use num_traits::{FromPrimitive, ToPrimitive};
 use rand::RngCore;
 use sha2::{Digest, Sha256};
 use sqrl_protocol::{client_request::ClientRequest, SqrlUrl};
-use std::{collections::VecDeque, fs::File, io::Write};
+use std::{collections::VecDeque, fs::File, io::Write, result};
 use x25519_dalek::{PublicKey, StaticSecret};
 use {
     identity_information::IdentityInformation, identity_unlock::IdentityUnlockData,
     previous_identity::PreviousIdentityData, readable_vector::ReadableVector,
     writable_datablock::WritableDataBlock,
 };
+
+/// A Result type to simplify return of functions
+pub type Result<T> = result::Result<T, SqrlError>;
 
 pub(crate) type AesVerificationData = [u8; 16];
 pub(crate) type IdentityKey = [u8; 32];
@@ -84,7 +87,7 @@ pub struct SqrlClient {
 
 impl SqrlClient {
     /// Create a new SQRL client protecting the data with the password
-    pub fn new(password: &str) -> Result<(Self, String), SqrlError> {
+    pub fn new(password: &str) -> Result<(Self, String)> {
         // Generate a random identity unlock key base
         let mut identity_unlock_key: [u8; 32] = [0; 32];
         OsRng.fill_bytes(&mut identity_unlock_key);
@@ -110,7 +113,7 @@ impl SqrlClient {
         identity_unlock: IdentityUnlockData,
         rescue_code: &str,
         new_password: &str,
-    ) -> Result<Self, SqrlError> {
+    ) -> Result<Self> {
         let identity_unlock_key = identity_unlock.decrypt_identity_unlock_key(rescue_code)?;
 
         // Encrypt the identity master key and identity lock key in
@@ -125,11 +128,7 @@ impl SqrlClient {
     }
 
     /// Recreate the SQRL data from a rescue code
-    pub fn recreate_from_rescue_code(
-        &self,
-        rescue_code: &str,
-        new_password: &str,
-    ) -> Result<Self, SqrlError> {
+    pub fn recreate_from_rescue_code(&self, rescue_code: &str, new_password: &str) -> Result<Self> {
         let identity_unlock_key = self
             .identity_unlock
             .decrypt_identity_unlock_key(rescue_code)?;
@@ -151,17 +150,13 @@ impl SqrlClient {
     /// let (mut client, _) = SqrlClient::new("password").unwrap();
     /// client.change_password("password", "new_password").unwrap();
     /// ```
-    pub fn change_password(
-        &mut self,
-        current_password: &str,
-        new_password: &str,
-    ) -> Result<(), SqrlError> {
+    pub fn change_password(&mut self, current_password: &str, new_password: &str) -> Result<()> {
         self.user_configuration
             .change_password(current_password, new_password)
     }
 
     /// Verify that the password is the correct password
-    pub fn verify_password(&mut self, password: &str) -> Result<(), SqrlError> {
+    pub fn verify_password(&mut self, password: &str) -> Result<()> {
         self.user_configuration.verify(password)?;
         Ok(())
     }
@@ -174,7 +169,7 @@ impl SqrlClient {
         alternate_identity: Option<&str>,
         request: &mut ClientRequest,
         previous_key_index: Option<usize>,
-    ) -> Result<(), SqrlError> {
+    ) -> Result<()> {
         let sqrl_url = SqrlUrl::parse(url)?;
         let private_key =
             self.get_private_key(password, &sqrl_url.get_auth_domain(), alternate_identity)?;
@@ -212,7 +207,7 @@ impl SqrlClient {
         url: &str,
         alternate_identity: Option<&str>,
         secret_index: &str,
-    ) -> Result<String, SqrlError> {
+    ) -> Result<String> {
         let private_key = self.get_private_key(
             password,
             &SqrlUrl::parse(url)?.get_auth_domain(),
@@ -225,11 +220,7 @@ impl SqrlClient {
     }
 
     /// Generate a new identity, storing the previous identity in the list of previous identities
-    pub fn rekey_identity(
-        &mut self,
-        password: &str,
-        rescue_code: &str,
-    ) -> Result<String, SqrlError> {
+    pub fn rekey_identity(&mut self, password: &str, rescue_code: &str) -> Result<String> {
         // Verify we can decrypt the current identity unlock key
         let current_identity_unlock_key = self
             .identity_unlock
@@ -283,7 +274,7 @@ impl SqrlClient {
         password: &str,
         url: &str,
         alternate_identity: Option<&str>,
-    ) -> Result<VerifyingKey, SqrlError> {
+    ) -> Result<VerifyingKey> {
         Ok(self
             .get_private_key(
                 password,
@@ -300,7 +291,7 @@ impl SqrlClient {
         password: &str,
         _hostname: &str,
         _alternate_identity: Option<&str>,
-    ) -> Result<IdentityUnlockKeys, SqrlError> {
+    ) -> Result<IdentityUnlockKeys> {
         self.user_configuration
             .generate_server_unlock_and_verify_unlock_keys(password)
     }
@@ -310,7 +301,7 @@ impl SqrlClient {
         &self,
         rescue_code: &str,
         server_unlock_key: [u8; 32],
-    ) -> Result<SigningKey, SqrlError> {
+    ) -> Result<SigningKey> {
         self.identity_unlock
             .generate_unlock_request_signing_key(rescue_code, server_unlock_key)
     }
@@ -323,7 +314,7 @@ impl SqrlClient {
         hint_length: Option<u8>,
         pw_verify_sec: Option<u8>,
         idle_timeout_min: Option<u16>,
-    ) -> Result<(), SqrlError> {
+    ) -> Result<()> {
         self.user_configuration.update_setings(
             password,
             option_flags,
@@ -334,12 +325,12 @@ impl SqrlClient {
     }
 
     /// Load SqrlClient from file
-    pub fn from_file(file_path: &str) -> Result<Self, SqrlError> {
+    pub fn from_file(file_path: &str) -> Result<Self> {
         SqrlClient::from_binary(convert_vec(std::fs::read(file_path)?))
     }
 
     /// Save SqrlClient to file
-    pub fn to_file(&self, file_path: &str) -> Result<(), SqrlError> {
+    pub fn to_file(&self, file_path: &str) -> Result<()> {
         let mut file = File::create(file_path)?;
         let data = self.to_binary()?;
         file.write_all(&data)?;
@@ -348,7 +339,7 @@ impl SqrlClient {
     }
 
     /// Generate SqrlClient from base64 encoded data
-    pub fn from_base64(input: &str) -> Result<Self, SqrlError> {
+    pub fn from_base64(input: &str) -> Result<Self> {
         // Confirm the beginning looks like what we expected
         if input.len() < 8 || input[0..8] != FILE_HEADER.to_uppercase() {
             return Err(SqrlError::new(format!(
@@ -374,7 +365,7 @@ impl SqrlClient {
     }
 
     /// Convert SqrlClient to base64 encoding
-    pub fn to_base64(&self) -> Result<String, SqrlError> {
+    pub fn to_base64(&self) -> Result<String> {
         let data = self.to_binary()?;
         Ok(BASE64_URL_SAFE.encode(data))
     }
@@ -384,7 +375,7 @@ impl SqrlClient {
         input: &str,
         rescue_code: &str,
         new_password: &str,
-    ) -> Result<Self, SqrlError> {
+    ) -> Result<Self> {
         validate_textual_identity(input)?;
         let mut data = decode_textual_identity(input)?;
         if data.next_u16()? != 73 || DataType::from_binary(&mut data)? != DataType::RescueCode {
@@ -396,7 +387,7 @@ impl SqrlClient {
     }
 
     /// Generate textual identity format of client data
-    pub fn to_textual_identity_format(&self) -> Result<String, SqrlError> {
+    pub fn to_textual_identity_format(&self) -> Result<String> {
         encode_textual_identity(self)
     }
 
@@ -405,7 +396,7 @@ impl SqrlClient {
         password: &str,
         auth_domain: &str,
         alternate_identity: Option<&str>,
-    ) -> Result<SigningKey, SqrlError> {
+    ) -> Result<SigningKey> {
         let key = self
             .user_configuration
             .decrypt_identity_master_key(password)?;
@@ -413,7 +404,7 @@ impl SqrlClient {
         key.get_private_key(auth_domain, alternate_identity)
     }
 
-    fn from_binary(mut binary: VecDeque<u8>) -> Result<Self, SqrlError> {
+    fn from_binary(mut binary: VecDeque<u8>) -> Result<Self> {
         match std::str::from_utf8(binary.next_sub_array(8)?.as_slice()) {
             Ok(x) => {
                 if x != FILE_HEADER {
@@ -492,7 +483,7 @@ impl SqrlClient {
         })
     }
 
-    fn to_binary(&self) -> Result<Vec<u8>, SqrlError> {
+    fn to_binary(&self) -> Result<Vec<u8>> {
         // Start by writing the header
         let mut result = Vec::new();
         for c in FILE_HEADER.bytes() {
@@ -586,7 +577,7 @@ pub(crate) enum DataType {
 }
 
 impl DataType {
-    fn from_binary(binary: &mut VecDeque<u8>) -> Result<Self, SqrlError> {
+    fn from_binary(binary: &mut VecDeque<u8>) -> Result<Self> {
         match binary.next_u16()? {
             1 => Ok(DataType::UserAccess),
             2 => Ok(DataType::RescueCode),
@@ -595,7 +586,7 @@ impl DataType {
         }
     }
 
-    fn to_binary(self, output: &mut Vec<u8>) -> Result<(), SqrlError> {
+    fn to_binary(self, output: &mut Vec<u8>) -> Result<()> {
         output.write_u16::<LittleEndian>(self as u16)?;
 
         Ok(())
@@ -603,11 +594,7 @@ impl DataType {
 }
 
 trait GetKey {
-    fn get_private_key(
-        &self,
-        url: &str,
-        alternate_identity: Option<&str>,
-    ) -> Result<SigningKey, SqrlError>;
+    fn get_private_key(&self, url: &str, alternate_identity: Option<&str>) -> Result<SigningKey>;
 }
 
 impl GetKey for IdentityKey {
@@ -615,7 +602,7 @@ impl GetKey for IdentityKey {
         &self,
         auth_domain: &str,
         alternate_identity: Option<&str>,
-    ) -> Result<SigningKey, SqrlError> {
+    ) -> Result<SigningKey> {
         let holder;
         let data = match alternate_identity {
             Some(id) => {
@@ -638,7 +625,7 @@ impl GetKey for IdentityKey {
 
 pub(crate) const EMPTY_NONCE: [u8; 12] = [0; 12];
 
-fn validate_textual_identity(textual_identity: &str) -> Result<(), SqrlError> {
+fn validate_textual_identity(textual_identity: &str) -> Result<()> {
     let mut line_num: u8 = 0;
     for line in textual_identity.lines() {
         // Take each character and convert it to value
@@ -682,7 +669,7 @@ fn validate_textual_identity(textual_identity: &str) -> Result<(), SqrlError> {
     Ok(())
 }
 
-fn encode_textual_identity(client: &SqrlClient) -> Result<String, SqrlError> {
+fn encode_textual_identity(client: &SqrlClient) -> Result<String> {
     let mut textual_identity = String::new();
     let mut bytes: Vec<u8> = Vec::new();
     let mut line_number: u8 = 0;
@@ -760,7 +747,7 @@ fn calculate_encoded_text_size(data: &Vec<u8>) -> u8 {
     count
 }
 
-fn decode_textual_identity(textual_identity: &str) -> Result<VecDeque<u8>, SqrlError> {
+fn decode_textual_identity(textual_identity: &str) -> Result<VecDeque<u8>> {
     let mut data = BigUint::from_u8(0).unwrap();
     let mut power = BigUint::from_u8(0).unwrap();
     let zero = BigUint::from_u8(0).unwrap();

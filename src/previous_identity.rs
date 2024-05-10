@@ -1,14 +1,13 @@
-use super::EMPTY_NONCE;
-use super::{
-    readable_vector::ReadableVector, writable_datablock::WritableDataBlock, DataType, IdentityKey,
+use crate::{
+    error::SqrlError, readable_vector::ReadableVector, writable_datablock::WritableDataBlock,
+    AesVerificationData, DataType, IdentityKey, Result, EMPTY_NONCE,
 };
-use crate::error::SqrlError;
-use crate::AesVerificationData;
-use aes_gcm::aead::{AeadMut, Payload};
-use aes_gcm::{Aes256Gcm, KeyInit};
+use aes_gcm::{
+    aead::{AeadMut, Payload},
+    Aes256Gcm, KeyInit,
+};
 use byteorder::{LittleEndian, WriteBytesExt};
-use std::io::Write;
-use std::{collections::VecDeque, convert::TryInto};
+use std::{collections::VecDeque, convert::TryInto, io::Write};
 
 const MAX_NUM_KEYS: u16 = 4;
 
@@ -32,7 +31,7 @@ impl PreviousIdentityData {
         &mut self,
         identity_master_key: &[u8],
         key: IdentityKey,
-    ) -> Result<(), SqrlError> {
+    ) -> Result<()> {
         // First decrypt the existing data
         let mut unencrypted_keys: VecDeque<IdentityKey>;
         if self.edition > 0 {
@@ -55,7 +54,7 @@ impl PreviousIdentityData {
         current_identity_master_key: &[u8],
         new_identity_master_key: &[u8],
         current_identity_unlock_key: Option<IdentityKey>,
-    ) -> Result<(), SqrlError> {
+    ) -> Result<()> {
         let mut unencrypted_keys = self.decrypt_previous_identities(current_identity_master_key)?;
 
         if let Some(key) = current_identity_unlock_key {
@@ -72,7 +71,7 @@ impl PreviousIdentityData {
         &self,
         identity_master_key: &[u8],
         index: usize,
-    ) -> Result<Option<IdentityKey>, SqrlError> {
+    ) -> Result<Option<IdentityKey>> {
         let keys = self.decrypt_previous_identities(identity_master_key)?;
         if index < keys.len() {
             Ok(Some(keys[index]))
@@ -84,7 +83,7 @@ impl PreviousIdentityData {
     fn decrypt_previous_identities(
         &self,
         identity_master_key: &[u8],
-    ) -> Result<VecDeque<IdentityKey>, SqrlError> {
+    ) -> Result<VecDeque<IdentityKey>> {
         // Append the various previous identities and the verification data
         let mut encrypted_data = Vec::new();
         for key in self.previous_identity_unlock_keys.iter() {
@@ -121,7 +120,7 @@ impl PreviousIdentityData {
         &mut self,
         unencrypted_keys: VecDeque<IdentityKey>,
         identity_master_key: &[u8],
-    ) -> Result<(), SqrlError> {
+    ) -> Result<()> {
         let num_keys: u16 = match unencrypted_keys.len().try_into() {
             Ok(p) => p,
             Err(_) => return Err(SqrlError::new("Too many previous keys".to_owned())),
@@ -151,7 +150,7 @@ impl PreviousIdentityData {
         Ok(())
     }
 
-    fn aad(&self) -> Result<Vec<u8>, SqrlError> {
+    fn aad(&self) -> Result<Vec<u8>> {
         let mut result = Vec::<u8>::new();
         result.write_u16::<LittleEndian>(self.len())?;
         self.get_type().to_binary(&mut result)?;
@@ -173,7 +172,7 @@ impl WritableDataBlock for PreviousIdentityData {
         }
     }
 
-    fn from_binary(binary: &mut VecDeque<u8>) -> Result<Self, SqrlError> {
+    fn from_binary(binary: &mut VecDeque<u8>) -> Result<Self> {
         let edition = binary.next_u16()?;
 
         let mut previous_identity_unlock_keys = VecDeque::new();
@@ -191,7 +190,7 @@ impl WritableDataBlock for PreviousIdentityData {
         })
     }
 
-    fn to_binary_inner(&self, output: &mut Vec<u8>) -> Result<(), SqrlError> {
+    fn to_binary_inner(&self, output: &mut Vec<u8>) -> Result<()> {
         if self.edition == 0 {
             return Ok(());
         }

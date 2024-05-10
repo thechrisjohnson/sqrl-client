@@ -1,6 +1,6 @@
 //! Common code used by both SQRL clients and servers
 
-use crate::error::SqrlError;
+use crate::{error::SqrlError, Result};
 use ed25519_dalek::VerifyingKey;
 use sha2::{Digest, Sha256};
 use x25519_dalek::PublicKey;
@@ -23,7 +23,7 @@ impl IdentityUnlockKeys {
     }
 }
 
-pub(crate) fn slice_to_u8_32(slice: &[u8]) -> Result<[u8; 32], SqrlError> {
+pub(crate) fn slice_to_u8_32(slice: &[u8]) -> Result<[u8; 32]> {
     let mut result = [0; 32];
     if slice.len() != 32 {
         return Err(SqrlError::new(format!(

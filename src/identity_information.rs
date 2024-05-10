@@ -1,11 +1,12 @@
-use super::{
+use crate::{
+    common::en_hash,
     config_options_to_u16,
+    error::SqrlError,
     readable_vector::ReadableVector,
     scrypt_config::{en_scrypt, mut_en_scrypt, ScryptConfig},
     writable_datablock::WritableDataBlock,
-    AesVerificationData, ConfigOptions, DataType, IdentityKey, IdentityUnlockKeys,
+    AesVerificationData, ConfigOptions, DataType, IdentityKey, IdentityUnlockKeys, Result,
 };
-use crate::{common::en_hash, error::SqrlError};
 use aes_gcm::{
     aead::{AeadMut, OsRng, Payload},
     Aes256Gcm, KeyInit,
@@ -34,7 +35,7 @@ impl IdentityInformation {
         password: &str,
         identity_master_key: [u8; 32],
         identity_lock_key: [u8; 32],
-    ) -> Result<Self, SqrlError> {
+    ) -> Result<Self> {
         let mut config = IdentityInformation {
             aes_gcm_iv: [0; 12],
             scrypt_config: ScryptConfig::new(),
@@ -54,7 +55,7 @@ impl IdentityInformation {
     pub(crate) fn from_identity_unlock_key(
         password: &str,
         identity_unlock_key: [u8; 32],
-    ) -> Result<Self, SqrlError> {
+    ) -> Result<Self> {
         // From the identity unlock key, generate the identity lock key and identity master key
         // NOTE: The identity_lock_key is the "public key" for an ECDHKA ED25519 where the private key is the identity unlock key
         let identity_master_key = en_hash(&identity_unlock_key);
@@ -65,7 +66,7 @@ impl IdentityInformation {
         Self::new(password, identity_master_key, identity_lock_key)
     }
 
-    fn aad(&self) -> Result<Vec<u8>, SqrlError> {
+    fn aad(&self) -> Result<Vec<u8>> {
         let mut result = Vec::<u8>::new();
         result.write_u16::<LittleEndian>(self.len())?;
         self.get_type().to_binary(&mut result)?;
@@ -79,20 +80,17 @@ impl IdentityInformation {
         Ok(result)
     }
 
-    pub(crate) fn decrypt_identity_master_key(
-        &self,
-        password: &str,
-    ) -> Result<IdentityKey, SqrlError> {
+    pub(crate) fn decrypt_identity_master_key(&self, password: &str) -> Result<IdentityKey> {
         let decrypted_data = self.decrypt(password)?;
         Ok(decrypted_data.identity_master_key)
     }
 
-    pub(crate) fn decrypt_identity_lock_key(&self, password: &str) -> Result<PublicKey, SqrlError> {
+    pub(crate) fn decrypt_identity_lock_key(&self, password: &str) -> Result<PublicKey> {
         let decrypted_data = self.decrypt(password)?;
         Ok(PublicKey::from(decrypted_data.identity_lock_key))
     }
 
-    pub(crate) fn verify(&self, password: &str) -> Result<(), SqrlError> {
+    pub(crate) fn verify(&self, password: &str) -> Result<()> {
         self.decrypt(password)?;
         Ok(())
     }
@@ -102,7 +100,7 @@ impl IdentityInformation {
         password: &str,
         identity_master_key: [u8; 32],
         identity_lock_key: [u8; 32],
-    ) -> Result<(), SqrlError> {
+    ) -> Result<()> {
         let mut random = StdRng::from_entropy();
         let mut to_encrypt = Vec::new();
         to_encrypt.write_all(&identity_master_key)?;
@@ -138,7 +136,7 @@ impl IdentityInformation {
     pub(crate) fn generate_server_unlock_and_verify_unlock_keys(
         &self,
         password: &str,
-    ) -> Result<IdentityUnlockKeys, SqrlError> {
+    ) -> Result<IdentityUnlockKeys> {
         // Get the identity lock key so we confirm the password first
         let identity_lock_key = self.decrypt_identity_lock_key(password)?;
 
@@ -162,7 +160,7 @@ impl IdentityInformation {
         &mut self,
         current_password: &str,
         new_password: &str,
-    ) -> Result<(), SqrlError> {
+    ) -> Result<()> {
         let decrypted_data = self.decrypt(current_password)?;
         self.update_keys(
             new_password,
@@ -178,7 +176,7 @@ impl IdentityInformation {
         hint_length: Option<u8>,
         pw_verify_sec: Option<u8>,
         idle_timeout_min: Option<u16>,
-    ) -> Result<(), SqrlError> {
+    ) -> Result<()> {
         let decryted = self.decrypt(password)?;
 
         if let Some(options) = option_flags {
@@ -201,7 +199,7 @@ impl IdentityInformation {
         )
     }
 
-    fn decrypt(&self, password: &str) -> Result<EncryptedKeyPair, SqrlError> {
+    fn decrypt(&self, password: &str) -> Result<EncryptedKeyPair> {
         let mut encrypted_data: Vec<u8> = Vec::new();
         for byte in self.identity_master_key {
             encrypted_data.push(byte);
@@ -250,7 +248,7 @@ impl WritableDataBlock for IdentityInformation {
         125
     }
 
-    fn from_binary(binary: &mut VecDeque<u8>) -> Result<Self, SqrlError> {
+    fn from_binary(binary: &mut VecDeque<u8>) -> Result<Self> {
         // Skip over the plaintext length
         binary.skip(2);
 
@@ -281,7 +279,7 @@ impl WritableDataBlock for IdentityInformation {
         })
     }
 
-    fn to_binary_inner(&self, output: &mut Vec<u8>) -> Result<(), SqrlError> {
+    fn to_binary_inner(&self, output: &mut Vec<u8>) -> Result<()> {
         output.write_u16::<LittleEndian>(45)?;
         output.write_all(&self.aes_gcm_iv)?;
         self.scrypt_config.to_binary(output)?;
