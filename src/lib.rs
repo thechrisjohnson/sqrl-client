@@ -1,4 +1,4 @@
-//! An implementation of the SQRL protocol in rust.
+//! A SQRL client SDK developed in rust.
 //!
 //! <https://grc.com/sqrl>
 
