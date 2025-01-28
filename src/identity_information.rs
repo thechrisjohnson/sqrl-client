@@ -101,7 +101,7 @@ impl IdentityInformation {
         identity_master_key: [u8; 32],
         identity_lock_key: [u8; 32],
     ) -> Result<()> {
-        let mut random = StdRng::from_entropy();
+        let mut random = StdRng::from_os_rng();
         let mut to_encrypt = Vec::new();
         to_encrypt.write_all(&identity_master_key)?;
         to_encrypt.write_all(&identity_lock_key)?;
@@ -311,7 +311,8 @@ mod tests {
     #[test]
     fn decrypt_identity_lock_key_matches() {
         let mut identity_lock_key = [0; 32];
-        OsRng.fill_bytes(&mut identity_lock_key);
+        let mut random = StdRng::from_os_rng();
+        random.fill_bytes(&mut identity_lock_key);
 
         let identity_information =
             IdentityInformation::new(TEST_PASSWORD, [0; 32], identity_lock_key).unwrap();
@@ -324,7 +325,8 @@ mod tests {
     #[test]
     fn decrypt_identity_master_key_matches() {
         let mut identity_master_key = [0; 32];
-        OsRng.fill_bytes(&mut identity_master_key);
+        let mut random = StdRng::from_os_rng();
+        random.fill_bytes(&mut identity_master_key);
 
         let identity_information =
             IdentityInformation::new(TEST_PASSWORD, identity_master_key, [0; 32]).unwrap();
@@ -338,8 +340,9 @@ mod tests {
     fn update_keys_updates_keys() {
         let mut identity_master_key = [0; 32];
         let mut identity_lock_key = [0; 32];
-        OsRng.fill_bytes(&mut identity_master_key);
-        OsRng.fill_bytes(&mut identity_lock_key);
+        let mut random = StdRng::from_os_rng();
+        random.fill_bytes(&mut identity_master_key);
+        random.fill_bytes(&mut identity_lock_key);
 
         let mut identity_information =
             IdentityInformation::new(TEST_PASSWORD, [0; 32], [0; 32]).unwrap();
@@ -378,8 +381,9 @@ mod tests {
     fn reset_password_works() {
         let mut identity_master_key = [0; 32];
         let mut identity_lock_key = [0; 32];
-        OsRng.fill_bytes(&mut identity_master_key);
-        OsRng.fill_bytes(&mut identity_lock_key);
+        let mut random = StdRng::from_os_rng();
+        random.fill_bytes(&mut identity_master_key);
+        random.fill_bytes(&mut identity_lock_key);
 
         let mut identity_information =
             IdentityInformation::new(TEST_PASSWORD, identity_master_key, identity_lock_key)

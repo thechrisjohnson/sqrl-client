@@ -1,7 +1,6 @@
 //! A common error used by SQRL clients and servers
 
-use scrypt::errors::{InvalidOutputLen, InvalidParams};
-use std::{fmt, num::ParseIntError, string::FromUtf8Error};
+use std::fmt;
 
 /// An error that can occur in the SQRL library
 pub struct SqrlError {
@@ -43,20 +42,20 @@ impl From<base64::DecodeError> for SqrlError {
     }
 }
 
-impl From<FromUtf8Error> for SqrlError {
-    fn from(error: FromUtf8Error) -> Self {
+impl From<std::string::FromUtf8Error> for SqrlError {
+    fn from(error: std::string::FromUtf8Error) -> Self {
         SqrlError::new(error.to_string())
     }
 }
 
-impl From<InvalidParams> for SqrlError {
-    fn from(value: InvalidParams) -> Self {
+impl From<scrypt::errors::InvalidParams> for SqrlError {
+    fn from(value: scrypt::errors::InvalidParams) -> Self {
         SqrlError::new(value.to_string())
     }
 }
 
-impl From<InvalidOutputLen> for SqrlError {
-    fn from(value: InvalidOutputLen) -> Self {
+impl From<scrypt::errors::InvalidOutputLen> for SqrlError {
+    fn from(value: scrypt::errors::InvalidOutputLen) -> Self {
         SqrlError::new(value.to_string())
     }
 }
@@ -79,8 +78,8 @@ impl From<ed25519_dalek::ed25519::Error> for SqrlError {
     }
 }
 
-impl From<ParseIntError> for SqrlError {
-    fn from(value: ParseIntError) -> Self {
+impl From<std::num::ParseIntError> for SqrlError {
+    fn from(value: std::num::ParseIntError) -> Self {
         SqrlError::new(value.to_string())
     }
 }
