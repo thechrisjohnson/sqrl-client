@@ -30,14 +30,13 @@ use crate::{
     common::{en_hash, slice_to_u8_32, IdentityUnlockKeys},
     error::SqrlError,
 };
-use aes_gcm::aead::OsRng;
 use base64::{prelude::BASE64_URL_SAFE, Engine};
 use byteorder::{LittleEndian, WriteBytesExt};
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use hmac::{Hmac, Mac};
 use num_bigint::BigUint;
 use num_traits::{FromPrimitive, ToPrimitive};
-use rand::RngCore;
+use rand::{rngs::StdRng, RngCore, SeedableRng};
 use sha2::{Digest, Sha256};
 use sqrl_protocol::{client_request::ClientRequest, SqrlUrl};
 use std::{collections::VecDeque, fs::File, io::Write, result};
@@ -90,7 +89,8 @@ impl SqrlClient {
     pub fn new(password: &str) -> Result<(Self, String)> {
         // Generate a random identity unlock key base
         let mut identity_unlock_key: [u8; 32] = [0; 32];
-        OsRng.fill_bytes(&mut identity_unlock_key);
+        let mut rand = StdRng::from_os_rng();
+        rand.fill_bytes(&mut identity_unlock_key);
 
         // Encrypt the identity unlock key with a random rescue code to return
         let (identity_unlock, rescue_code) = IdentityUnlockData::new(identity_unlock_key)?;
@@ -228,7 +228,8 @@ impl SqrlClient {
 
         // Generate a new identity unlock key
         let mut new_identity_unlock_key: [u8; 32] = [0; 32];
-        OsRng.fill_bytes(&mut new_identity_unlock_key);
+        let mut rand = StdRng::from_os_rng();
+        rand.fill_bytes(&mut new_identity_unlock_key);
 
         // From the identity unlock key, generate the new identity lock key and identity master key
         let new_identity_master_key = en_hash(&new_identity_unlock_key);
