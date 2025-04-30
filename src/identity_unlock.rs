@@ -163,15 +163,15 @@ fn generate_rescue_code() -> String {
     let mut num = BigUint::from_bytes_be(&rescue_code_data);
     let mut rescue_code = String::new();
     let mut count = 0;
-    for _ in 0..24 {
+    for i in 0..24 {
         let remainder = &num % 10u8;
         num /= 10u8;
         let character = RESCUE_CODE_ALPHABET[remainder.to_usize().unwrap()];
         rescue_code.push(character);
 
-        // Every four characters add a hyphen
+        // Every four characters add a hyphen (except for the last time)
         count += 1;
-        if count == 4 {
+        if count == 4 && i != 23 {
             count = 0;
             rescue_code.push('-');
         }
