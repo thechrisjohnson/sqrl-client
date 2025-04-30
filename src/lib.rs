@@ -156,7 +156,7 @@ impl SqrlClient {
     }
 
     /// Verify that the password is the correct password
-    pub fn verify_password(&mut self, password: &str) -> Result<()> {
+    pub fn verify_password(&self, password: &str) -> Result<()> {
         self.user_configuration.verify(password)?;
         Ok(())
     }
