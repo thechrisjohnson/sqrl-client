@@ -1,4 +1,4 @@
-use crate::{DataType, Result};
+use crate::{data::DataType, Result};
 use byteorder::{LittleEndian, WriteBytesExt};
 use std::collections::VecDeque;
 
