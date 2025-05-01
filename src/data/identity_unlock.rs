@@ -1,8 +1,11 @@
 use crate::{
-    readable_vector::ReadableVector,
-    scrypt_config::{en_scrypt, mut_en_scrypt, ScryptConfig},
-    writable_datablock::WritableDataBlock,
-    AesVerificationData, DataType, IdentityKey, Result, EMPTY_NONCE,
+    data::{
+        readable_vector::ReadableVector,
+        scrypt_config::{en_scrypt, mut_en_scrypt, ScryptConfig},
+        writable_datablock::WritableDataBlock,
+        DataType, EMPTY_NONCE,
+    },
+    AesVerificationData, IdentityKey, Result,
 };
 use aes_gcm::{
     aead::{Aead, Payload},

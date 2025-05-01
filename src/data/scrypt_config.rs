@@ -1,4 +1,8 @@
-use crate::{common::xor, error::SqrlError, readable_vector::ReadableVector, Result};
+use crate::{
+    data::{readable_vector::ReadableVector, xor},
+    error::SqrlError,
+    Result,
+};
 use byteorder::{LittleEndian, WriteBytesExt};
 use rand::{rngs::StdRng, RngCore, SeedableRng};
 use scrypt::{scrypt, Params};

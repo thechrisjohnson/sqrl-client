@@ -1,11 +1,14 @@
 use crate::{
-    common::en_hash,
-    config_options_to_u16,
+    common::IdentityUnlockKeys,
+    data::{
+        config_options_to_u16, en_hash,
+        readable_vector::ReadableVector,
+        scrypt_config::{en_scrypt, mut_en_scrypt, ScryptConfig},
+        writable_datablock::WritableDataBlock,
+        AesVerificationData, ConfigOptions, DataType,
+    },
     error::SqrlError,
-    readable_vector::ReadableVector,
-    scrypt_config::{en_scrypt, mut_en_scrypt, ScryptConfig},
-    writable_datablock::WritableDataBlock,
-    AesVerificationData, ConfigOptions, DataType, IdentityKey, IdentityUnlockKeys, Result,
+    IdentityKey, Result,
 };
 use aes_gcm::{
     aead::{AeadMut, OsRng, Payload},
