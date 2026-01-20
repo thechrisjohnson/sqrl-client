@@ -691,7 +691,7 @@ fn encode_textual_identity(client: &SqrlClient) -> Result<String> {
             textual_identity.push(c);
 
             // If we're at a multiple of 4, add a space
-            if bytes.len() % 4 == 0 {
+            if bytes.len().is_multiple_of(4) {
                 textual_identity.push(' ');
             } else if bytes.len() == 19 || character == encoded_size {
                 bytes.push(line_number);
