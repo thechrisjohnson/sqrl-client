@@ -36,7 +36,7 @@ use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use hmac::{Hmac, Mac};
 use num_bigint::BigUint;
 use num_traits::{FromPrimitive, ToPrimitive};
-use rand::{rngs::StdRng, RngCore, SeedableRng};
+use rand::{rngs::StdRng, Rng};
 use sha2::{Digest, Sha256};
 use sqrl_protocol::{client_request::ClientRequest, SqrlUrl};
 use std::{collections::VecDeque, fs::File, io::Write, result};
@@ -89,7 +89,7 @@ impl SqrlClient {
     pub fn new(password: &str) -> Result<(Self, String)> {
         // Generate a random identity unlock key base
         let mut identity_unlock_key: [u8; 32] = [0; 32];
-        let mut rand = StdRng::from_os_rng();
+        let mut rand: StdRng = rand::make_rng();
         rand.fill_bytes(&mut identity_unlock_key);
 
         // Encrypt the identity unlock key with a random rescue code to return
@@ -228,7 +228,7 @@ impl SqrlClient {
 
         // Generate a new identity unlock key
         let mut new_identity_unlock_key: [u8; 32] = [0; 32];
-        let mut rand = StdRng::from_os_rng();
+        let mut rand: StdRng = rand::make_rng();
         rand.fill_bytes(&mut new_identity_unlock_key);
 
         // From the identity unlock key, generate the new identity lock key and identity master key

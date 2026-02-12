@@ -12,7 +12,7 @@ use byteorder::{LittleEndian, WriteBytesExt};
 use ed25519_dalek::SigningKey;
 use num_bigint::BigUint;
 use num_traits::ToPrimitive;
-use rand::{prelude::StdRng, RngCore, SeedableRng};
+use rand::{prelude::StdRng, Rng};
 use std::{collections::VecDeque, convert::TryInto, io::Write};
 use x25519_dalek::{PublicKey, StaticSecret};
 
@@ -156,7 +156,7 @@ impl WritableDataBlock for IdentityUnlockData {
 
 // Generate a random rescue code for use in encrypting data
 fn generate_rescue_code() -> String {
-    let mut random = StdRng::from_os_rng();
+    let mut random: StdRng = rand::make_rng();
     let mut rescue_code_data: [u8; 32] = [0; 32];
     random.fill_bytes(&mut rescue_code_data);
 
@@ -199,7 +199,7 @@ mod tests {
 
     #[test]
     fn generate_and_unlock_with_rescue_code() {
-        let mut random = StdRng::from_os_rng();
+        let mut random: StdRng = rand::make_rng();
         let mut identity_unlock_key: IdentityKey = [0; 32];
         random.fill_bytes(&mut identity_unlock_key);
 

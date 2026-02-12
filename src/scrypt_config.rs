@@ -1,6 +1,6 @@
 use crate::{common::xor, error::SqrlError, readable_vector::ReadableVector, Result};
 use byteorder::{LittleEndian, WriteBytesExt};
-use rand::{rngs::StdRng, RngCore, SeedableRng};
+use rand::{rngs::StdRng, Rng};
 use scrypt::{scrypt, Params};
 use std::{collections::VecDeque, convert::TryInto, io::Write, time::Instant};
 
@@ -17,7 +17,7 @@ pub(crate) struct ScryptConfig {
 
 impl ScryptConfig {
     pub(crate) fn new() -> Self {
-        let mut random = StdRng::from_os_rng();
+        let mut random: StdRng = rand::make_rng();
         let mut salt: [u8; 16] = [0; 16];
         random.fill_bytes(&mut salt);
 
