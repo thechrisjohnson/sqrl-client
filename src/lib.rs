@@ -33,7 +33,7 @@ use crate::{
 use base64::{prelude::BASE64_URL_SAFE, Engine};
 use byteorder::{LittleEndian, WriteBytesExt};
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use num_bigint::BigUint;
 use num_traits::{FromPrimitive, ToPrimitive};
 use rand::{rngs::StdRng, Rng};
