@@ -67,8 +67,7 @@ pub(crate) fn mut_en_scrypt(
     let params = Params::new(
         scrypt_config.log_n_factor,
         SCRYPT_DEFAULT_R,
-        SCRYPT_DEFAULT_P,
-        32,
+        SCRYPT_DEFAULT_P
     )?;
 
     match scrypt_config.iteration_factor {
@@ -118,7 +117,6 @@ pub(crate) fn en_scrypt(password: &[u8], scrypt_config: &ScryptConfig) -> Result
         scrypt_config.log_n_factor,
         SCRYPT_DEFAULT_R,
         SCRYPT_DEFAULT_P,
-        32,
     )?;
 
     match scrypt_config.iteration_factor {
