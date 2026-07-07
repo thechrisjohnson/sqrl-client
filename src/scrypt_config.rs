@@ -67,7 +67,7 @@ pub(crate) fn mut_en_scrypt(
     let params = Params::new(
         scrypt_config.log_n_factor,
         SCRYPT_DEFAULT_R,
-        SCRYPT_DEFAULT_P
+        SCRYPT_DEFAULT_P,
     )?;
 
     match scrypt_config.iteration_factor {

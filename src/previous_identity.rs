@@ -3,8 +3,8 @@ use crate::{
     AesVerificationData, DataType, IdentityKey, Result, EMPTY_NONCE,
 };
 use aes_gcm::{
-    aead::{AeadMut, Payload},
-    Aes256Gcm, KeyInit,
+    aead::{Aead, Payload},
+    Aes256Gcm, Key, KeyInit,
 };
 use byteorder::{LittleEndian, WriteBytesExt};
 use std::{collections::VecDeque, convert::TryInto, io::Write};
@@ -96,7 +96,7 @@ impl PreviousIdentityData {
             encrypted_data.push(byte);
         }
 
-        let mut aes = Aes256Gcm::new(identity_master_key.into());
+        let aes = Aes256Gcm::new(&Key::<Aes256Gcm>::try_from(identity_master_key)?);
         let payload = Payload {
             msg: &encrypted_data,
             aad: &self.aad()?,
@@ -126,7 +126,7 @@ impl PreviousIdentityData {
             Err(_) => return Err(SqrlError::new("Too many previous keys".to_owned())),
         };
 
-        let mut aes = Aes256Gcm::new(identity_master_key.into());
+        let aes = Aes256Gcm::new(&Key::<Aes256Gcm>::try_from(identity_master_key)?);
         let payload = Payload {
             msg: &unencrypted_keys.into_iter().flatten().collect::<Vec<u8>>(),
             aad: &self.aad()?,

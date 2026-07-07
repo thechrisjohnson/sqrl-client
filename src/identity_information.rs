@@ -8,12 +8,12 @@ use crate::{
     AesVerificationData, ConfigOptions, DataType, IdentityKey, IdentityUnlockKeys, Result,
 };
 use aes_gcm::{
-    aead::{AeadMut, OsRng, Payload},
+    aead::{Aead, Payload},
     Aes256Gcm, KeyInit,
 };
 use byteorder::{LittleEndian, WriteBytesExt};
 use ed25519_dalek::{SigningKey, VerifyingKey};
-use rand::{prelude::StdRng, Rng};
+use rand::{rngs::StdRng, Rng};
 use std::{collections::VecDeque, convert::TryInto, io::Write};
 use x25519_dalek::{EphemeralSecret, PublicKey, StaticSecret};
 
@@ -113,7 +113,7 @@ impl IdentityInformation {
         )?;
 
         random.fill_bytes(&mut self.aes_gcm_iv);
-        let mut aes = Aes256Gcm::new(&key.into());
+        let aes = Aes256Gcm::new(&key.into());
         let payload = Payload {
             msg: &to_encrypt,
             aad: &self.aad()?,
@@ -141,7 +141,7 @@ impl IdentityInformation {
         let identity_lock_key = self.decrypt_identity_lock_key(password)?;
 
         // Generate the random secret key and the server unlock key (the matching public key)
-        let random_key = EphemeralSecret::random_from_rng(OsRng);
+        let random_key = EphemeralSecret::random();
         let server_unlock_key = PublicKey::from(&random_key);
 
         // Diffie-Hellman the random key with the identity lock key
@@ -212,7 +212,7 @@ impl IdentityInformation {
         }
 
         let key = en_scrypt(password.as_bytes(), &self.scrypt_config)?;
-        let mut aes = Aes256Gcm::new(&key.into());
+        let aes = Aes256Gcm::new(&key.into());
         let payload = Payload {
             msg: &encrypted_data,
             aad: &self.aad()?,
